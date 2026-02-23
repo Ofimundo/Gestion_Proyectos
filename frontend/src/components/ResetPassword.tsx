@@ -20,6 +20,9 @@ const ResetPassword: React.FC<ResetPasswordProps> = ({ onSwitchToLogin }) => {
   const [token, setToken] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
 
+  // URL de la API (usando variable de entorno)
+  const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001/api';
+
   // Obtener token y email de la URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -69,7 +72,8 @@ const ResetPassword: React.FC<ResetPasswordProps> = ({ onSwitchToLogin }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3002/api/reset-password', {
+      // 🔥 CORREGIDO: Puerto 3001 y usando API_URL
+      const response = await fetch(`${API_URL}/reset-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

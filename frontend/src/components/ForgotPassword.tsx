@@ -15,6 +15,9 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onSwitchToLogin }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<'username' | 'password'>('username');
 
+  // 🔥 USAR VARIABLE DE ENTORNO
+  const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001/api';
+
   // Verificar si el usuario existe (por username o email)
   const checkUserExists = async () => {
     setError('');
@@ -27,7 +30,8 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onSwitchToLogin }) => {
     }
 
     try {
-      const response = await fetch('http://localhost:3002/api/check-username', {
+      // 🔥 CORREGIDO: Usar API_URL en lugar de localhost:3002
+      const response = await fetch(`${API_URL}/check-username`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -74,7 +78,8 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onSwitchToLogin }) => {
     }
 
     try {
-      const response = await fetch('http://localhost:3002/api/reset-password-by-username', {
+      // 🔥 CORREGIDO: Usar API_URL en lugar de localhost:3002
+      const response = await fetch(`${API_URL}/reset-password-by-username`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

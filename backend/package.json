@@ -1,6 +1,7 @@
 {
   "name": "rpa-manager-backend",
   "version": "1.0.0",
+  "description": "Backend API para RPA Manager - Node.js + Express + SQLite",
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon src/server.ts",
@@ -32,8 +33,7 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
-  "description": "",
-  "keywords": [],
+  "keywords": ["api", "express", "sqlite", "jwt", "typescript"],
   "author": "",
   "license": "ISC",
   "type": "commonjs"

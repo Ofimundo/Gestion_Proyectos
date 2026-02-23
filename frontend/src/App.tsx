@@ -10,6 +10,7 @@ import Profesionales from './components/Profesionales';
 import Fichas from './components/Fichas';
 import DashboardProyectos from './components/DashboardProyectos';
 import Perfil from './components/Perfil';
+import React from 'react';
 
 // Componente wrapper para manejar la navegación
 function AppRoutes() {
