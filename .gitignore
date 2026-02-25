@@ -1,1 +1,22 @@
 node_modules
+
+# Archivos de entorno
+.env
+.env.local
+.env.development
+.env.production
+
+# Carpetas de backup
+temp_backup/
+backup/
+Gestion_Proyectos/
+GestionProyectos/
+temp_backup/Gestion proyectos/
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
