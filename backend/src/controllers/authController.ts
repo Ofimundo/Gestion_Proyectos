@@ -1,13 +1,14 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import { db } from '../database/database';
+import { getDatabase } from '../database/database';
+
 
 export const authController = {
   login: async (req: Request, res: Response) => {
     try {
       const { email, password } = req.body;
-      
+      const db = await getDatabase()
       console.log('🔐 Intento de login:', email);
 
       // Buscar usuario por email o username
@@ -70,7 +71,7 @@ export const authController = {
   register: async (req: Request, res: Response) => {
     try {
       const { nombre, username, email, password, empresa } = req.body;
-
+      const db = await getDatabase()
       // Verificar si el usuario ya existe
       const existingUser = await db.get(
         'SELECT * FROM users WHERE email = ? OR username = ?',
