@@ -3,7 +3,7 @@
 interface ImportMetaEnv {
   /**
    * URL base de la API del backend
-   * @example 'http://localhost:3001/api'
+   * @example 'https://gestion-proyectos-backend-9nj0.onrender.com/api'
    */
   readonly VITE_API_URL: string;
 

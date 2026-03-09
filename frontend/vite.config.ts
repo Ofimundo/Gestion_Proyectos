@@ -13,7 +13,7 @@ export default defineConfig({
     proxy: {
       // Proxy para peticiones a /api
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'https://gestion-proyectos-backend-9nj0.onrender.com',
         changeOrigin: true,
         secure: false,
         // Opcional: reescribir la ruta

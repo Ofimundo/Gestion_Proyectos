@@ -16,7 +16,7 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onSwitchToLogin }) => {
   const [step, setStep] = useState<'username' | 'password'>('username');
 
   // 🔥 USAR VARIABLE DE ENTORNO
-  const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001/api';
+  const API_URL = (import.meta as any).env.VITE_API_URL || 'https://gestion-proyectos-backend-9nj0.onrender.com/api';
 
   // Verificar si el usuario existe (por username o email)
   const checkUserExists = async () => {

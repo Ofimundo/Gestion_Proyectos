@@ -36,7 +36,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     try {
       // Llamar al backend para login
-      const response = await fetch('http://localhost:3001/api/login', {
+      const response = await fetch('https://gestion-proyectos-backend-9nj0.onrender.com/api/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -85,7 +85,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     try {
       // Llamar al backend para registrar
-      const response = await fetch('http://localhost:3001/api/register', {
+      const response = await fetch('https://gestion-proyectos-backend-9nj0.onrender.com/api/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -117,7 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Implementar actualización en el backend
-      const response = await fetch(`http://localhost:3001/api/users/${user.email}`, {
+      const response = await fetch(`https://gestion-proyectos-backend-9nj0.onrender.com/api/users/${user.email}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

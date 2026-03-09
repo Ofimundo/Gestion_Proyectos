@@ -13,7 +13,7 @@ const getApiUrl = (): string => {
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  return 'http://localhost:3001/api';
+  return 'https://gestion-proyectos-backend-9nj0.onrender.com/api';
 };
 
 const API_URL = getApiUrl();

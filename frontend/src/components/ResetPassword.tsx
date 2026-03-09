@@ -21,7 +21,7 @@ const ResetPassword: React.FC<ResetPasswordProps> = ({ onSwitchToLogin }) => {
   const [email, setEmail] = useState<string | null>(null);
 
   // URL de la API (usando variable de entorno)
-  const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001/api';
+  const API_URL = (import.meta as any).env.VITE_API_URL || 'https://gestion-proyectos-backend-9nj0.onrender.com/api';
 
   // Obtener token y email de la URL
   useEffect(() => {
