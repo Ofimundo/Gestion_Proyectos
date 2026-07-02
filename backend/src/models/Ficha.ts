@@ -49,6 +49,11 @@ export class FichaModel {
         
         if (existingProj.recordset.length > 0) {
             proyectoId = existingProj.recordset[0].Id;
+            // Sincronizar el estado del proyecto existente con el de la nueva ficha
+            await db.request()
+                .input('Id', sql.Int, proyectoId)
+                .input('Estado', sql.NVarChar, data.estado || 'No Iniciada')
+                .query('UPDATE Proyectos SET Estado = @Estado, FechaActualizacion = GETDATE() WHERE Id = @Id');
         } else {
             // Crear Proyecto
             const code = `FCH-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -57,6 +62,7 @@ export class FichaModel {
                 .input('NombreProyecto', sql.NVarChar, data.nombreProyecto)
                 .input('Cliente', sql.NVarChar, data.cliente || '')
                 .input('Lider', sql.NVarChar, data.lider || '')
+                .input('Estado', sql.NVarChar, data.estado || 'No Iniciada')
                 .input('Venta', sql.Decimal(18, 2), data.venta || 0)
                 .input('HHPlanificadas', sql.Decimal(10, 2), data.hhPlanificadas || 0)
                 .input('HHReal', sql.Decimal(10, 2), data.hhReal || 0)
@@ -65,7 +71,7 @@ export class FichaModel {
                 .input('Descripcion', sql.NVarChar, data.descripcion || '')
                 .query(`
                     INSERT INTO Proyectos (Codigo, NombreProyecto, Cliente, Lider, Estado, Avance, Venta, HHPlanificadas, HHReal, FechaInicio, FechaFin, Descripcion, FechaCreacion)
-                    VALUES (@Codigo, @NombreProyecto, @Cliente, @Lider, 'No Iniciada', @HHPlanificadas, @Venta, @HHPlanificadas, @HHReal, @FechaInicio, @FechaFin, @Descripcion, GETDATE());
+                    VALUES (@Codigo, @NombreProyecto, @Cliente, @Lider, @Estado, @HHPlanificadas, @Venta, @HHPlanificadas, @HHReal, @FechaInicio, @FechaFin, @Descripcion, GETDATE());
                     SELECT SCOPE_IDENTITY() AS Id;
                 `);
             proyectoId = createProj.recordset[0].Id;

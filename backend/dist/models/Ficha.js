@@ -17,6 +17,11 @@ class FichaModel {
             .query('SELECT Id FROM Proyectos WHERE NombreProyecto = @NombreProyecto');
         if (existingProj.recordset.length > 0) {
             proyectoId = existingProj.recordset[0].Id;
+            // Sincronizar el estado del proyecto existente con el de la nueva ficha
+            await db.request()
+                .input('Id', mssql_1.default.Int, proyectoId)
+                .input('Estado', mssql_1.default.NVarChar, data.estado || 'No Iniciada')
+                .query('UPDATE Proyectos SET Estado = @Estado, FechaActualizacion = GETDATE() WHERE Id = @Id');
         }
         else {
             // Crear Proyecto
@@ -26,6 +31,7 @@ class FichaModel {
                 .input('NombreProyecto', mssql_1.default.NVarChar, data.nombreProyecto)
                 .input('Cliente', mssql_1.default.NVarChar, data.cliente || '')
                 .input('Lider', mssql_1.default.NVarChar, data.lider || '')
+                .input('Estado', mssql_1.default.NVarChar, data.estado || 'No Iniciada')
                 .input('Venta', mssql_1.default.Decimal(18, 2), data.venta || 0)
                 .input('HHPlanificadas', mssql_1.default.Decimal(10, 2), data.hhPlanificadas || 0)
                 .input('HHReal', mssql_1.default.Decimal(10, 2), data.hhReal || 0)
@@ -34,7 +40,7 @@ class FichaModel {
                 .input('Descripcion', mssql_1.default.NVarChar, data.descripcion || '')
                 .query(`
                     INSERT INTO Proyectos (Codigo, NombreProyecto, Cliente, Lider, Estado, Avance, Venta, HHPlanificadas, HHReal, FechaInicio, FechaFin, Descripcion, FechaCreacion)
-                    VALUES (@Codigo, @NombreProyecto, @Cliente, @Lider, 'No Iniciada', @HHPlanificadas, @Venta, @HHPlanificadas, @HHReal, @FechaInicio, @FechaFin, @Descripcion, GETDATE());
+                    VALUES (@Codigo, @NombreProyecto, @Cliente, @Lider, @Estado, @HHPlanificadas, @Venta, @HHPlanificadas, @HHReal, @FechaInicio, @FechaFin, @Descripcion, GETDATE());
                     SELECT SCOPE_IDENTITY() AS Id;
                 `);
             proyectoId = createProj.recordset[0].Id;
