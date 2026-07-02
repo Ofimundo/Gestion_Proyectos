@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { User } from '../types/auth.types';
-import authService from '../services/authService';
-import api from '../services/api';
+import api from '../../services/api';
+
+interface User {
+  id: string;
+  name: string;
+  username: string;
+  email: string;
+  role: string;
+  empresa: string | null;
+  activo: number;
+  created_at: string;
+  updated_at: string;
+}
 
 interface UserStats {
   total: number;

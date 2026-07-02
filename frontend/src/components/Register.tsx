@@ -7,7 +7,7 @@ interface RegisterProps {
 }
 
 const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
-  const { register, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { isLoading: authLoading, isAuthenticated } = useAuth();
   
   const [formData, setFormData] = useState({
     nombre: '',

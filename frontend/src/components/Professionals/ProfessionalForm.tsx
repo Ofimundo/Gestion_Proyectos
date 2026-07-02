@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import type { Professional } from '../../types/professional.types';
 
@@ -16,7 +15,6 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({
   onSubmit, 
   onCancel 
 }) => {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({

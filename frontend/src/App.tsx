@@ -49,7 +49,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 function AppRoutes() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const [redirecting, setRedirecting] = useState(false);
 
   // Redirigir automáticamente si ya está autenticado

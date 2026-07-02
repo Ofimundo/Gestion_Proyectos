@@ -487,7 +487,6 @@ const SolicitudProyecto: React.FC = () => {
   const [observacionesAprobacion, setObservacionesAprobacion] = useState('');
   const [ultimoEnvio, setUltimoEnvio] = useState<{email: string; link: string; nombre: string} | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [emailSimpleData, setEmailSimpleData] = useState({
     nombreSolicitante: '',
     area: '',
@@ -520,7 +519,7 @@ const SolicitudProyecto: React.FC = () => {
   const dismissToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
 
   // Generar token
-  const generateFormToken = (solicitudId: string): string => {
+  const generateFormToken = (): string => {
     return 'TOKEN_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8);
   };
 
@@ -528,7 +527,6 @@ const SolicitudProyecto: React.FC = () => {
   const cargarSolicitudes = async () => {
     try {
       setLoading(true);
-      setError(null);
       console.log('🔄 Cargando solicitudes desde el servidor...');
       
       const response = await api.get('/solicitudes');
@@ -551,12 +549,9 @@ const SolicitudProyecto: React.FC = () => {
         
         setSolicitudes(datos);
         console.log('✅ Estado actualizado con', datos.length, 'solicitudes');
-      } else {
-        setError('Error al cargar solicitudes');
       }
     } catch (err: any) {
       console.error('❌ Error cargando solicitudes:', err);
-      setError(err.response?.data?.message || 'Error al cargar solicitudes');
     } finally {
       setLoading(false);
     }
@@ -784,7 +779,7 @@ const SolicitudProyecto: React.FC = () => {
     const loadingId = showToast('Creando solicitud y enviando email...', 'loading');
 
     try {
-      const token = generateFormToken(Date.now().toString());
+      const token = generateFormToken();
       console.log('🔑 Token generado:', token);
 
       const nuevaSolicitud: any = {

@@ -83,7 +83,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onEdit }) => {
 
   // Calcular estadísticas
   const totalHH = project.stages?.reduce((acc, s) => acc + (s.hh_real || 0), 0) || 0;
-  const progress = project.stages?.length > 0 
+  const progress = (project.stages && project.stages.length > 0)
     ? (project.stages.filter(s => s.status === 'Completada').length / project.stages.length) * 100
     : 0;
 

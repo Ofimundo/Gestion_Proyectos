@@ -111,8 +111,8 @@ const emailService = {
     nombreProyecto: string,
     nombreSolicitante: string,
     area: string,
-    descripcion: string,
-    presupuesto: number
+    _descripcion: string,
+    _presupuesto: number
   ): Promise<EmailResponse> => {
     try {
       console.log('📧 Enviando confirmación de registro a:', email);

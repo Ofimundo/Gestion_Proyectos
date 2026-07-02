@@ -29,22 +29,10 @@ interface ProyectoAsignado {
   profesionalNombre: string;
 }
 
-interface SolicitudProyecto {
-  id: string;
-  nombreProyecto: string;
-  nombreSolicitante: string;
-  area: string;
-  estado: string;
-  profesionalesAsignados?: { profesionalId: string; profesionalNombre: string; estimacionHoras: number; fechaAsignacion: string }[];
-  estimacionHorasTotal?: number;
-  fechaInicio?: string;
-  fechaFin?: string;
-}
 
 const DashboardProfesionalDetalle: React.FC = () => {
   const navigate = useNavigate();
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
-  const [solicitudes, setSolicitudes] = useState<SolicitudProyecto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState<string>('todos');
@@ -65,11 +53,6 @@ const DashboardProfesionalDetalle: React.FC = () => {
         setProfesionales(profesionalesResponse.data.data || []);
       }
 
-      // Cargar solicitudes desde la API
-      const solicitudesResponse = await api.get('/solicitudes');
-      if (solicitudesResponse.data.success) {
-        setSolicitudes(solicitudesResponse.data.data || []);
-      }
     } catch (err: any) {
       console.error('Error cargando datos:', err);
       setError(err.response?.data?.message || 'Error al cargar los datos');
@@ -147,16 +130,6 @@ const DashboardProfesionalDetalle: React.FC = () => {
       };
     }
     return {};
-  };
-
-  // Obtener horas por mes para un profesional
-  const getHorasPorMes = (profesional: Profesional) => {
-    const horasPorMes: { [key: string]: number } = {};
-    meses.forEach((_, index) => {
-      const keyMes = `${anoSeleccionado}-${index}`;
-      horasPorMes[meses[index]] = profesional.horasAsignadasMes?.[keyMes] || 0;
-    });
-    return horasPorMes;
   };
 
   const proyectosAsignadosMap = getProyectosAsignados();

@@ -1122,11 +1122,6 @@ const Profesionales: React.FC = () => {
     };
   }, []);
 
-  const guardarProfesionales = async (nuevaLista: Profesional[]) => {
-    // Guardar en localStorage para compatibilidad
-    localStorage.setItem('rpa_profesionales', JSON.stringify(nuevaLista));
-    setProfesionales(nuevaLista);
-  };
 
   const handleAsignarProyecto = (profesional: Profesional) => {
     cargarSolicitudes();
@@ -1264,7 +1259,7 @@ const Profesionales: React.FC = () => {
     setShowModal(true);
   };
 
-  const handleDeleteClick = (id: string, nombre: string) => {
+  const handleDeleteClick = (id: string) => {
     setProfesionalAEliminar(id);
     setShowConfirmDialog(true);
   };
@@ -1342,7 +1337,6 @@ const Profesionales: React.FC = () => {
 
   const exportToExcel = () => {
     const datos = calcularHorasPorMes();
-    const maxHoras = getMaxHorasSemanales(new Date(anoSeleccionado, 0, 1));
     const leyTexto = getLeyHorasTexto(new Date(anoSeleccionado, 0, 1));
     
     const exportData: (string | number)[][] = [
@@ -1714,7 +1708,7 @@ const Profesionales: React.FC = () => {
                                 Asignar
                               </button>
                               <button
-                                onClick={() => handleDeleteClick(prof.id, prof.nombre)}
+                                onClick={() => handleDeleteClick(prof.id)}
                                 className="text-red-600 hover:text-red-900"
                               >
                                 Eliminar

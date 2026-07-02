@@ -1,7 +1,7 @@
 // src/components/EmailDialog.tsx
 import React, { useState } from 'react';
 import emailService from '../services/emailService';
-import { showToast } from './Toast';
+import { showSuccess, showError } from './Toast';
 
 interface EmailDialogProps {
   isOpen: boolean;
@@ -36,12 +36,12 @@ const EmailDialog: React.FC<EmailDialogProps> = ({
 
     // Validar email
     if (!email) {
-      showToast.error('Por favor ingresa un email válido');
+      showError('Por favor ingresa un email válido');
       return;
     }
 
     if (!emailService.validateEmail(email)) {
-      showToast.error('El email ingresado no es válido');
+      showError('El email ingresado no es válido');
       return;
     }
     
@@ -62,18 +62,18 @@ const EmailDialog: React.FC<EmailDialogProps> = ({
         );
 
         if (result.success) {
-          showToast.success(result.message || 'Email enviado exitosamente');
+          showSuccess(result.message || 'Email enviado exitosamente');
           setEmail('');
           onClose();
         } else {
           setError(result.message || 'Error al enviar el email');
-          showToast.error(result.message || 'Error al enviar el email');
+          showError(result.message || 'Error al enviar el email');
         }
       }
     } catch (err: any) {
       const errorMessage = err.message || 'Error al enviar el email';
       setError(errorMessage);
-      showToast.error(errorMessage);
+      showError(errorMessage);
     } finally {
       setEnviando(false);
     }

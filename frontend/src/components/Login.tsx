@@ -1,6 +1,5 @@
 // src/components/Login.tsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
 
@@ -15,7 +14,6 @@ const Login: React.FC<LoginProps> = ({
   onSwitchToForgotPassword,
   onLoginSuccess 
 }) => {
-  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -25,7 +23,7 @@ const Login: React.FC<LoginProps> = ({
   const [isBlocked, setIsBlocked] = useState(false);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const { login, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   // Verificar si ya hay sesión al montar el componente
   useEffect(() => {

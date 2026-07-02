@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import type { Professional } from '../../types/professional.types';
 
@@ -12,7 +11,6 @@ const ProfessionalList: React.FC<ProfessionalListProps> = ({
   onSelectProfessional, 
   onNewProfessional 
 }) => {
-  const navigate = useNavigate();
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
