@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import authService from '../services/authService';
 
 const Perfil: React.FC = () => {
   const navigate = useNavigate();
   const { user, updateUser, isLoading } = useAuth();
   
-  const [nombre, setNombre] = useState(user?.name || '');
+  const [nombre, setNombre] = useState(user?.nombre || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -16,15 +17,25 @@ const Perfil: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
+
+  // Sincronizar nombre cuando cambie el usuario
+  useEffect(() => {
+    if (user?.nombre) {
+      setNombre(user.nombre);
+    }
+  }, [user]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+    setLocalLoading(true);
 
     // Validar que haya al menos un cambio
-    if (nombre === user?.name && !newPassword) {
+    if (nombre === user?.nombre && !newPassword) {
       setError('No hay cambios para guardar');
+      setLocalLoading(false);
       return;
     }
 
@@ -32,37 +43,53 @@ const Perfil: React.FC = () => {
     if (newPassword) {
       if (!currentPassword) {
         setError('Debes ingresar tu contraseña actual');
+        setLocalLoading(false);
         return;
       }
 
       if (newPassword.length < 6) {
         setError('La nueva contraseña debe tener al menos 6 caracteres');
+        setLocalLoading(false);
         return;
       }
 
       if (newPassword !== confirmPassword) {
         setError('Las contraseñas nuevas no coinciden');
-        return;
-      }
-
-      if (!currentPassword) {
-        setError('Contraseña actual incorrecta');
+        setLocalLoading(false);
         return;
       }
     }
 
     try {
-      const updateData: { nombre?: string; password?: string } = {};
+      const updateData: { name?: string; password?: string } = {};
       
-      if (nombre !== user?.name) {
-        updateData.nombre = nombre;
+      if (nombre !== user?.nombre) {
+        updateData.name = nombre;
       }
       
       if (newPassword) {
-        updateData.password = newPassword;
+        // Usar el método changePassword del authService
+        await authService.changePassword(currentPassword, newPassword);
+        // La contraseña se actualizó exitosamente
       }
 
-      await updateUser(updateData);
+      // Actualizar nombre si cambió
+      if (nombre !== user?.nombre) {
+        const updatedUser = await authService.updateProfile({ 
+          name: nombre 
+        });
+        
+        // Actualizar el contexto con el nuevo usuario
+        if (updateUser) {
+          updateUser(updatedUser);
+        }
+      }
+
+      // Si solo se cambió la contraseña y no el nombre
+      if (nombre === user?.nombre && newPassword) {
+        // Ya se cambió la contraseña con authService.changePassword
+        // Solo mostramos mensaje de éxito
+      }
       
       setSuccess('Perfil actualizado exitosamente');
       setCurrentPassword('');
@@ -74,8 +101,12 @@ const Perfil: React.FC = () => {
       
     } catch (err: any) {
       setError(err.message || 'Error al actualizar perfil');
+    } finally {
+      setLocalLoading(false);
     }
   };
+
+  const loading = isLoading || localLoading;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
@@ -108,14 +139,14 @@ const Perfil: React.FC = () => {
           <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 sm:px-6 py-6 sm:py-8 text-center">
             <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-white rounded-full mx-auto mb-3 sm:mb-4 flex items-center justify-center">
               <span className="text-2xl sm:text-3xl md:text-4xl font-bold text-indigo-600">
-                {user?.name?.charAt(0).toUpperCase()}
+                {user?.nombre?.charAt(0).toUpperCase() || 'U'}
               </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-bold text-white break-words px-2">
-              {user?.name}
+              {user?.nombre || 'Usuario'}
             </h2>
             <p className="text-sm sm:text-base text-indigo-100 break-words px-2">
-              {user?.email}
+              {user?.email || 'usuario@email.com'}
             </p>
             <span className="inline-block mt-2 px-2 sm:px-3 py-1 bg-white/20 rounded-full text-xs sm:text-sm text-white">
               {user?.role === 'admin' ? 'Administrador' : 'Usuario'}
@@ -147,7 +178,7 @@ const Perfil: React.FC = () => {
                     type="text"
                     value={nombre}
                     onChange={(e) => setNombre(e.target.value)}
-                    disabled={!isEditing || isLoading}
+                    disabled={!isEditing || loading}
                     className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
                       !isEditing ? 'bg-gray-100' : 'border-gray-300'
                     }`}
@@ -199,7 +230,7 @@ const Perfil: React.FC = () => {
                         onChange={(e) => setCurrentPassword(e.target.value)}
                         className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-10 sm:pr-12"
                         placeholder="••••••••"
-                        disabled={isLoading}
+                        disabled={loading}
                       />
                       <button
                         type="button"
@@ -223,7 +254,7 @@ const Perfil: React.FC = () => {
                         onChange={(e) => setNewPassword(e.target.value)}
                         className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-10 sm:pr-12"
                         placeholder="••••••••"
-                        disabled={isLoading}
+                        disabled={loading}
                         minLength={6}
                       />
                       <button
@@ -248,7 +279,7 @@ const Perfil: React.FC = () => {
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-10 sm:pr-12"
                         placeholder="••••••••"
-                        disabled={isLoading}
+                        disabled={loading}
                       />
                       <button
                         type="button"
@@ -268,23 +299,33 @@ const Perfil: React.FC = () => {
                   <>
                     <button
                       type="submit"
-                      disabled={isLoading}
+                      disabled={loading}
                       className="w-full xs:flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-2 sm:py-3 px-3 sm:px-4 text-xs sm:text-sm rounded-xl hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 font-semibold disabled:opacity-50 transition-all"
                     >
-                      {isLoading ? 'Guardando...' : 'Guardar cambios'}
+                      {loading ? (
+                        <span className="flex items-center justify-center">
+                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Guardando...
+                        </span>
+                      ) : (
+                        'Guardar cambios'
+                      )}
                     </button>
                     <button
                       type="button"
                       onClick={() => {
                         setIsEditing(false);
-                        setNombre(user?.name || '');
+                        setNombre(user?.nombre || '');
                         setCurrentPassword('');
                         setNewPassword('');
                         setConfirmPassword('');
                         setError('');
                       }}
                       className="w-full xs:flex-1 bg-white border-2 border-gray-300 text-gray-700 py-2 sm:py-3 px-3 sm:px-4 text-xs sm:text-sm rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 font-semibold"
-                      disabled={isLoading}
+                      disabled={loading}
                     >
                       Cancelar
                     </button>

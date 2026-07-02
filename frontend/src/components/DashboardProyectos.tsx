@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import DashboardHoras from './DashboardHoras';
+import api from '../services/api';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -51,51 +53,63 @@ const DashboardProyectos: React.FC = () => {
   const [selectedProyecto, setSelectedProyecto] = useState<string>('todos');
   const [timeRange, setTimeRange] = useState<'semanal' | 'mensual' | 'trimestral'>('mensual');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'resumen' | 'horas'>('resumen');
+
+  const cargarDatos = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Cargar fichas desde la API (proyectos en el flujo activo)
+      const response = await api.get('/fichas');
+      
+      if (response.data.success) {
+        const fichasData = response.data.data || [];
+        
+        // Mapear datos de la API al formato esperado
+        const proyectosMapeados: Proyecto[] = fichasData.map((f: any) => ({
+          id: f.id,
+          codigo: f.codigo || 'SIN-CODIGO',
+          nombreProyecto: f.nombreProyecto || 'Sin nombre',
+          cliente: f.cliente || 'Sin cliente',
+          lider: f.lider || 'Sin líder',
+          descripcion: f.descripcion || '',
+          venta: f.venta || 0,
+          hhImplementacion: f.hhImplementacion || 0,
+          hhPeriodo: f.hhPeriodo || 0,
+          recursos: f.recursos || [],
+          fechaInicio: f.fechaInicio || '',
+          fechaTermino: f.fechaTermino || '',
+          estado: f.estado || 'No Iniciada',
+          avance: f.avance || 0,
+          hhPlanificadas: f.hhPlanificadas || 0,
+          hhReal: f.hhReal || 0
+        }));
+        
+        setProyectos(proyectosMapeados);
+      } else {
+        setError('Error al cargar proyectos');
+        setProyectos([]);
+      }
+    } catch (err: any) {
+      console.error('Error cargando proyectos:', err);
+      setError(err.response?.data?.message || 'Error al cargar los proyectos');
+      setProyectos([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadData = () => {
-      try {
-        const fichasGuardadas = localStorage.getItem('rpa_fichas');
-        if (fichasGuardadas) {
-          const fichas = JSON.parse(fichasGuardadas);
-          const proyectosMapeados: Proyecto[] = fichas.map((f: any) => ({
-            id: f.id,
-            codigo: f.codigo || 'SIN-CODIGO',
-            nombreProyecto: f.nombreProyecto || 'Sin nombre',
-            cliente: f.cliente || 'Sin cliente',
-            lider: f.lider || 'Sin líder',
-            descripcion: f.descripcion || '',
-            venta: f.venta || 0,
-            hhImplementacion: f.hhImplementacion || 0,
-            hhPeriodo: f.hhPeriodo || 0,
-            recursos: f.recursos || [],
-            fechaInicio: f.fechaInicio || '',
-            fechaTermino: f.fechaTermino || '',
-            estado: f.estado || 'No Iniciada',
-            avance: f.avance || 0,
-            hhPlanificadas: f.hhPlanificadas || 0,
-            hhReal: f.hhReal || 0
-          }));
-          setProyectos(proyectosMapeados);
-        } else {
-          setProyectos([]);
-        }
-      } catch (error) {
-        console.error('Error cargando proyectos:', error);
-        setProyectos([]);
-      } finally {
-        setLoading(false);
-      }
+    cargarDatos();
+
+    const handleSolicitudesUpdate = () => {
+      cargarDatos();
     };
 
-    loadData();
-
-    const handleStorageChange = () => {
-      loadData();
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('solicitudes-updated', handleSolicitudesUpdate);
+    return () => window.removeEventListener('solicitudes-updated', handleSolicitudesUpdate);
   }, []);
 
   const filteredProyectos = selectedProyecto === 'todos' 
@@ -231,9 +245,24 @@ const DashboardProyectos: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
+          <p className="text-red-600 text-center">{error}</p>
+          <button
+            onClick={cargarDatos}
+            className="mt-4 w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-      {/* Navbar Responsive */}
       <nav className="bg-white shadow-lg border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between py-3 sm:py-0 sm:h-16">
@@ -258,256 +287,304 @@ const DashboardProyectos: React.FC = () => {
                 </span>
               </div>
             </div>
+            <button
+              onClick={cargarDatos}
+              className="mt-2 sm:mt-0 text-xs sm:text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center px-2 sm:px-3 py-1 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              <svg className="w-3 h-3 sm:w-4 sm:h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Actualizar
+            </button>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
-        {/* Filtros */}
-        <div className="mb-4 sm:mb-6 md:mb-8 flex flex-col xs:flex-row gap-2 sm:gap-4">
-          <select
-            value={selectedProyecto}
-            onChange={(e) => setSelectedProyecto(e.target.value)}
-            className="w-full xs:w-auto px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-          >
-            <option value="todos">Todos los proyectos</option>
-            {proyectos.map(p => (
-              <option key={p.id} value={p.id} className="truncate">
-                {p.codigo} - {p.nombreProyecto}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value as any)}
-            className="w-full xs:w-auto px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-          >
-            <option value="semanal">Semanal</option>
-            <option value="mensual">Mensual</option>
-            <option value="trimestral">Trimestral</option>
-          </select>
-        </div>
-
-        {/* Tarjetas de KPI */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 lg:gap-6 mb-6 sm:mb-8">
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-2 sm:p-3 md:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-600">HH Plan</p>
-                <p className="text-sm sm:text-base md:text-lg lg:text-2xl font-bold text-gray-900">
-                  {totalHHPlanificadas}
-                </p>
-              </div>
-              <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
-                <svg className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-2 sm:p-3 md:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-600">Venta</p>
-                <p className="text-sm sm:text-base md:text-lg lg:text-2xl font-bold text-gray-900">
-                  ${totalVenta.toLocaleString()}
-                </p>
-              </div>
-              <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <svg className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-2 sm:p-3 md:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-600">Activos</p>
-                <p className="text-sm sm:text-base md:text-lg lg:text-2xl font-bold text-gray-900">
-                  {proyectosEnCurso}
-                </p>
-              </div>
-              <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <svg className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-2 sm:p-3 md:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-600">Rendimiento</p>
-                <p className="text-sm sm:text-base md:text-lg lg:text-2xl font-bold text-gray-900">
-                  {totalHHPlanificadas > 0 ? ((totalHHReales / totalHHPlanificadas) * 100).toFixed(1) : 0}%
-                </p>
-              </div>
-              <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                <svg className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex space-x-2 sm:space-x-4">
+            <button
+              onClick={() => setActiveTab('resumen')}
+              className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium transition-colors ${
+                activeTab === 'resumen'
+                  ? 'border-b-2 border-green-600 text-green-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <span className="flex items-center">
+                <svg className="w-4 h-4 mr-1 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
+                Resumen Proyectos
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('horas')}
+              className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium transition-colors ${
+                activeTab === 'horas'
+                  ? 'border-b-2 border-green-600 text-green-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <span className="flex items-center">
+                <svg className="w-4 h-4 mr-1 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Distribución de Horas
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <main className="max-w-7xl mx-auto py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
+        {activeTab === 'resumen' ? (
+          <>
+            <div className="mb-4 sm:mb-6 md:mb-8 flex flex-col xs:flex-row gap-2 sm:gap-4">
+              <select
+                value={selectedProyecto}
+                onChange={(e) => setSelectedProyecto(e.target.value)}
+                className="w-full xs:w-auto px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value="todos">Todos los proyectos</option>
+                {proyectos.map(p => (
+                  <option key={p.id} value={p.id} className="truncate">
+                    {p.codigo} - {p.nombreProyecto}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={timeRange}
+                onChange={(e) => setTimeRange(e.target.value as any)}
+                className="w-full xs:w-auto px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value="semanal">Semanal</option>
+                <option value="mensual">Mensual</option>
+                <option value="trimestral">Trimestral</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 lg:gap-6 mb-6 sm:mb-8">
+              <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-2 sm:p-3 md:p-4 lg:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-600">HH Plan</p>
+                    <p className="text-sm sm:text-base md:text-lg lg:text-2xl font-bold text-gray-900">
+                      {totalHHPlanificadas}
+                    </p>
+                  </div>
+                  <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-2 sm:p-3 md:p-4 lg:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-600">Venta</p>
+                    <p className="text-sm sm:text-base md:text-lg lg:text-2xl font-bold text-gray-900">
+                      ${totalVenta.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-2 sm:p-3 md:p-4 lg:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-600">Activos</p>
+                    <p className="text-sm sm:text-base md:text-lg lg:text-2xl font-bold text-gray-900">
+                      {proyectosEnCurso}
+                    </p>
+                  </div>
+                  <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-2 sm:p-3 md:p-4 lg:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-600">Rendimiento</p>
+                    <p className="text-sm sm:text-base md:text-lg lg:text-2xl font-bold text-gray-900">
+                      {totalHHPlanificadas > 0 ? ((totalHHReales / totalHHPlanificadas) * 100).toFixed(1) : 0}%
+                    </p>
+                  </div>
+                  <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Gráficos */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 md:gap-8 mb-6 sm:mb-8">
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
-            <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 mb-2 sm:mb-4">
-              Horas por Proyecto
-            </h3>
-            <div className="h-48 sm:h-64 md:h-72 lg:h-80">
-              {filteredProyectos.length > 0 ? (
-                <Bar data={horasData} options={chartOptions} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-xs sm:text-sm text-gray-400">
-                  No hay datos
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 md:gap-8 mb-6 sm:mb-8">
+              <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
+                <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 mb-2 sm:mb-4">
+                  Horas por Proyecto
+                </h3>
+                <div className="h-48 sm:h-64 md:h-72 lg:h-80">
+                  {filteredProyectos.length > 0 ? (
+                    <Bar data={horasData} options={chartOptions} />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-xs sm:text-sm text-gray-400">
+                      No hay datos
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
 
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
-            <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 mb-2 sm:mb-4">
-              Ventas por Proyecto
-            </h3>
-            <div className="h-48 sm:h-64 md:h-72 lg:h-80">
-              {filteredProyectos.length > 0 ? (
-                <Bar data={ventasData} options={chartOptions} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-xs sm:text-sm text-gray-400">
-                  No hay datos
+              <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
+                <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 mb-2 sm:mb-4">
+                  Ventas por Proyecto
+                </h3>
+                <div className="h-48 sm:h-64 md:h-72 lg:h-80">
+                  {filteredProyectos.length > 0 ? (
+                    <Bar data={ventasData} options={chartOptions} />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-xs sm:text-sm text-gray-400">
+                      No hay datos
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
 
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
-            <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 mb-2 sm:mb-4">
-              Distribución por Estado
-            </h3>
-            <div className="h-48 sm:h-64 md:h-72 lg:h-80">
-              {proyectos.length > 0 ? (
-                <Pie data={estadoData} options={chartOptions} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-xs sm:text-sm text-gray-400">
-                  No hay datos
+              <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
+                <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 mb-2 sm:mb-4">
+                  Distribución por Estado
+                </h3>
+                <div className="h-48 sm:h-64 md:h-72 lg:h-80">
+                  {proyectos.length > 0 ? (
+                    <Pie data={estadoData} options={chartOptions} />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-xs sm:text-sm text-gray-400">
+                      No hay datos
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
 
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
-            <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 mb-2 sm:mb-4">
-              Evolución de Horas
-            </h3>
-            <div className="h-48 sm:h-64 md:h-72 lg:h-80">
-              {proyectos.length > 0 ? (
-                <Line data={evolucionData} options={chartOptions} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-xs sm:text-sm text-gray-400">
-                  No hay datos
+              <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
+                <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 mb-2 sm:mb-4">
+                  Evolución de Horas
+                </h3>
+                <div className="h-48 sm:h-64 md:h-72 lg:h-80">
+                  {proyectos.length > 0 ? (
+                    <Line data={evolucionData} options={chartOptions} />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-xs sm:text-sm text-gray-400">
+                      No hay datos
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Tabla de proyectos */}
-        <div className="bg-white rounded-lg sm:rounded-xl shadow-md overflow-hidden">
-          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gray-50">
-            <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800">
-              Detalle de Proyectos
-            </h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-xs sm:text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
-                    Código
-                  </th>
-                  <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
-                    Proyecto
-                  </th>
-                  <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                    Cliente
-                  </th>
-                  <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
-                    Venta
-                  </th>
-                  <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
-                    HH Plan
-                  </th>
-                  <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
-                    Avance
-                  </th>
-                  <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
-                    Estado
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredProyectos.length > 0 ? (
-                  filteredProyectos.map((proyecto) => (
-                    <tr key={proyecto.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap font-medium">
-                        {proyecto.codigo}
-                      </td>
-                      <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap hidden sm:table-cell">
-                        {proyecto.nombreProyecto}
-                      </td>
-                      <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap hidden md:table-cell">
-                        {proyecto.cliente}
-                      </td>
-                      <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap text-green-600 font-medium">
-                        ${proyecto.venta?.toLocaleString() || 0}
-                      </td>
-                      <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap hidden lg:table-cell">
-                        {proyecto.hhPlanificadas || 0}
-                      </td>
-                      <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1 sm:gap-2">
-                          <div className="w-8 sm:w-12 md:w-16 h-1.5 sm:h-2 bg-gray-200 rounded-full">
-                            <div 
-                              className="h-1.5 sm:h-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full"
-                              style={{ width: `${proyecto.avance || 0}%` }}
-                            ></div>
-                          </div>
-                          <span className="text-xs sm:text-sm">{proyecto.avance || 0}%</span>
-                        </div>
-                      </td>
-                      <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap">
-                        <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-semibold rounded-full ${
-                          proyecto.estado === 'En Curso' ? 'bg-green-100 text-green-800' :
-                          proyecto.estado === 'Completada' ? 'bg-blue-100 text-blue-800' :
-                          proyecto.estado === 'Standby' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {proyecto.estado === 'En Curso' ? 'Curso' : 
-                           proyecto.estado === 'Completada' ? 'Compl' : 
-                           proyecto.estado === 'Standby' ? 'Stand' : 'No Ini'}
-                        </span>
-                      </td>
+            <div className="bg-white rounded-lg sm:rounded-xl shadow-md overflow-hidden">
+              <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gray-50">
+                <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800">
+                  Detalle de Proyectos
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-xs sm:text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                        Código
+                      </th>
+                      <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
+                        Proyecto
+                      </th>
+                      <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                        Cliente
+                      </th>
+                      <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                        Venta
+                      </th>
+                      <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                        HH Plan
+                      </th>
+                      <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                        Avance
+                      </th>
+                      <th className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                        Estado
+                      </th>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="px-4 sm:px-6 py-6 sm:py-8 text-center text-xs sm:text-sm text-gray-400">
-                      No hay proyectos para mostrar
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredProyectos.length > 0 ? (
+                      filteredProyectos.map((proyecto) => (
+                        <tr key={proyecto.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap font-medium">
+                            {proyecto.codigo}
+                          </td>
+                          <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap hidden sm:table-cell">
+                            {proyecto.nombreProyecto}
+                          </td>
+                          <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap hidden md:table-cell">
+                            {proyecto.cliente}
+                          </td>
+                          <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap text-green-600 font-medium">
+                            ${proyecto.venta?.toLocaleString() || 0}
+                          </td>
+                          <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap hidden lg:table-cell">
+                            {proyecto.hhPlanificadas || 0}
+                          </td>
+                          <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap">
+                            <div className="flex items-center gap-1 sm:gap-2">
+                              <div className="w-8 sm:w-12 md:w-16 h-1.5 sm:h-2 bg-gray-200 rounded-full">
+                                <div 
+                                  className="h-1.5 sm:h-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full"
+                                  style={{ width: `${proyecto.avance || 0}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-xs sm:text-sm">{proyecto.avance || 0}%</span>
+                            </div>
+                          </td>
+                          <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap">
+                            <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-semibold rounded-full ${
+                              proyecto.estado === 'En Curso' ? 'bg-green-100 text-green-800' :
+                              proyecto.estado === 'Completada' ? 'bg-blue-100 text-blue-800' :
+                              proyecto.estado === 'Standby' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {proyecto.estado === 'En Curso' ? 'Curso' : 
+                               proyecto.estado === 'Completada' ? 'Compl' : 
+                               proyecto.estado === 'Standby' ? 'Stand' : 'No Ini'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="px-4 sm:px-6 py-6 sm:py-8 text-center text-xs sm:text-sm text-gray-400">
+                          No hay proyectos para mostrar
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        ) : (
+          <DashboardHoras />
+        )}
       </main>
     </div>
   );

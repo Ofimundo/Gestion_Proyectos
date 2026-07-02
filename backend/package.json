@@ -1,7 +1,7 @@
 {
   "name": "rpa-manager-backend",
   "version": "1.0.0",
-  "description": "Backend API para RPA Manager - Node.js + Express + SQLite",
+  "description": "Backend API para RPA Manager - Node.js + Express + SQL Server",
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon src/server.ts",
@@ -10,22 +10,27 @@
     "migrate": "ts-node src/database/migrate.ts"
   },
   "dependencies": {
+    "@azure/identity": "^4.13.1",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
     "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.3",
+    "body-parser": "^2.2.2",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
-    "express": "^4.22.1",
+    "express": "^4.22.2",
     "express-validator": "^7.3.1",
     "jsonwebtoken": "^9.0.3",
+    "mssql": "^9.0.0",
     "nodemailer": "^8.0.1",
-    "sqlite": "^5.1.1",
-    "sqlite3": "^5.0.2",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.2"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
+    "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.25",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/mssql": "^9.0.0",
     "@types/node": "^20.19.33",
     "@types/nodemailer": "^7.0.10",
     "@types/uuid": "^10.0.0",
@@ -33,7 +38,14 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
-  "keywords": ["api", "express", "sqlite", "jwt", "typescript"],
+  "keywords": [
+    "api",
+    "express",
+    "sqlserver",
+    "mssql",
+    "jwt",
+    "typescript"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs"

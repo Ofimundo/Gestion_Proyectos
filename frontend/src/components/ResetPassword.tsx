@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import authService from '../services/authService';
 
 interface ResetPasswordProps {
   onSwitchToLogin: () => void;
@@ -19,9 +20,6 @@ const ResetPassword: React.FC<ResetPasswordProps> = ({ onSwitchToLogin }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
-
-  // URL de la API (usando variable de entorno)
-  const API_URL = (import.meta as any).env.VITE_API_URL || 'https://gestion-proyectos-backend-9nj0.onrender.com/api';
 
   // Obtener token y email de la URL
   useEffect(() => {
@@ -72,28 +70,18 @@ const ResetPassword: React.FC<ResetPasswordProps> = ({ onSwitchToLogin }) => {
     setIsLoading(true);
 
     try {
-      // 🔥 CORREGIDO: Puerto 3001 y usando API_URL
-      const response = await fetch(`${API_URL}/reset-password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          token,
-          email,
-          newPassword: formData.password
-        }),
+      const result = await authService.resetPassword({
+        token,
+        email,
+        password: formData.password,
+        confirmPassword: formData.confirmPassword
       });
 
-      const data = await response.json();
-
-      if (data.success) {
+      if (result) {
         setIsSubmitted(true);
-      } else {
-        setError(data.message || 'Error al restablecer la contraseña');
       }
-    } catch (err) {
-      setError('Error de conexión con el servidor');
+    } catch (err: any) {
+      setError(err.message || 'Error al restablecer la contraseña');
     } finally {
       setIsLoading(false);
     }

@@ -1,147 +1,261 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
-// Eliminamos bcrypt porque no se usa en el frontend
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface User {
-  email: string;
-  name: string;
+  id: string;
+  nombre: string;
   username: string;
-  role: string;
+  email: string;
+  empresa?: string;
+  role: 'admin' | 'user';
+  createdAt: string;
+}
+
+interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+interface RegisterData {
+  nombre: string;
+  username: string;
+  email: string;
+  password: string;
+  empresa?: string;
 }
 
 interface AuthContextType {
-  login: (credentials: { email: string; password: string }) => Promise<void>;
-  register: (userData: { 
-    nombre: string; 
-    username: string;
-    email: string; 
-    password: string;
-    empresa?: string;
-  }) => Promise<void>;
-  logout: () => void;
-  updateUser: (data: { nombre?: string; username?: string; password?: string }) => Promise<void>;
-  isLoading: boolean;
   user: User | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (credentials: LoginCredentials) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
+  logout: () => void;
+  updateUser: (userData: Partial<User>) => void;
+}
+
+interface StoredUser {
+  id: string;
+  nombre: string;
+  username: string;
+  email: string;
+  empresa?: string;
+  password: string;
+  role: 'admin' | 'user';
+  createdAt: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const STORAGE_KEYS = {
+  USERS: 'rpa_users',
+  CURRENT_USER: 'rpa_current_user',
+  SESSION: 'rpa_session'
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isLoading, setIsLoading] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const login = async (credentials: { email: string; password: string }) => {
-    const { email, password } = credentials;
+  // Función para cargar usuarios desde localStorage
+  const loadUsers = (): StoredUser[] => {
+    try {
+      const storedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
+      if (storedUsers) {
+        const parsedUsers = JSON.parse(storedUsers);
+        return Array.isArray(parsedUsers) ? parsedUsers : [];
+      }
+      return [];
+    } catch (error) {
+      console.error('Error cargando usuarios:', error);
+      return [];
+    }
+  };
+
+  // Función para guardar usuarios en localStorage
+  const saveUsers = (users: StoredUser[]) => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    } catch (error) {
+      console.error('Error guardando usuarios:', error);
+    }
+  };
+
+  // Función para inicializar usuarios por defecto
+  const initializeDefaultUsers = () => {
+    const users = loadUsers();
+    if (users.length === 0) {
+      const defaultUsers: StoredUser[] = [
+        {
+          id: '1',
+          nombre: 'Administrador',
+          username: 'admin',
+          email: 'admin@rpa.com',
+          password: 'admin123',
+          role: 'admin',
+          createdAt: new Date().toISOString()
+        }
+      ];
+      saveUsers(defaultUsers);
+      return defaultUsers;
+    }
+    return users;
+  };
+
+  // Verificar sesión al cargar
+  useEffect(() => {
+    const checkSession = () => {
+      try {
+        // Inicializar usuarios por defecto si no existen
+        initializeDefaultUsers();
+        
+        const token = localStorage.getItem('token');
+        const storedUser = localStorage.getItem('current_user');
+        const storedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
+        
+        if (token && storedUser) {
+          // Sesión real (Backend API)
+          setUser(JSON.parse(storedUser));
+          setIsAuthenticated(true);
+        } else if (storedSession) {
+          // Sesión mock (Fallback)
+          const sessionData = JSON.parse(storedSession);
+          const expirationTime = sessionData.expiresAt;
+          
+          if (expirationTime && new Date(expirationTime) > new Date()) {
+            setUser(sessionData.user);
+            setIsAuthenticated(true);
+          } else {
+            // Sesión expirada, limpiar
+            localStorage.removeItem(STORAGE_KEYS.SESSION);
+            localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+            setUser(null);
+            setIsAuthenticated(false);
+          }
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        console.error('Error verificando sesión:', error);
+        setUser(null);
+        setIsAuthenticated(false);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkSession();
+  }, []);
+
+  const login = async (credentials: LoginCredentials) => {
     setIsLoading(true);
     
     try {
-      // Llamar al backend para login
-      const response = await fetch('https://gestion-proyectos-backend-9nj0.onrender.com/api/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.message || 'Credenciales inválidas');
+      const users = loadUsers();
+      const { email, password } = credentials;
+      
+      // Buscar usuario por email o username
+      const foundUser = users.find(
+        u => (u.email === email || u.username === email) && u.password === password
+      );
+      
+      if (!foundUser) {
+        throw new Error('Credenciales incorrectas');
       }
-
-      // Guardar usuario en el estado
-      const userData: User = {
-        email: data.user.email,
-        name: data.user.nombre,
-        username: data.user.username,
-        role: data.user.role
+      
+      // Crear objeto de usuario sin la contraseña
+      const loggedUser: User = {
+        id: foundUser.id,
+        nombre: foundUser.nombre,
+        username: foundUser.username,
+        email: foundUser.email,
+        empresa: foundUser.empresa,
+        role: foundUser.role,
+        createdAt: foundUser.createdAt
       };
-
-      setUser(userData);
       
-      // Guardar token si es necesario
-      if (data.token) {
-        localStorage.setItem('rpa_token', data.token);
-      }
+      // Guardar sesión con expiración (24 horas)
+      const sessionData = {
+        user: loggedUser,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      };
       
-      console.log('✅ Login exitoso para:', email);
+      localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(sessionData));
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(loggedUser));
+      
+      setUser(loggedUser);
+      setIsAuthenticated(true);
+      
     } catch (error) {
-      console.error('❌ Login failed:', error);
+      console.error('Error en login:', error);
       throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const register = async (userData: { 
-    nombre: string; 
-    username: string;
-    email: string; 
-    password: string;
-    empresa?: string;
-  }) => {
+  const register = async (data: RegisterData) => {
     setIsLoading(true);
     
     try {
-      // Llamar al backend para registrar
-      const response = await fetch('https://gestion-proyectos-backend-9nj0.onrender.com/api/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(userData),
-      });
-
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.message || 'Error al registrar usuario');
+      const users = loadUsers();
+      
+      // Verificar si el username ya existe
+      if (users.some(u => u.username === data.username)) {
+        throw new Error('El nombre de usuario ya está registrado');
       }
       
-      console.log('✅ Registro exitoso para:', userData.email);
-    } catch (error) {
-      console.error('❌ Registro failed:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const updateUser = async (data: { nombre?: string; username?: string; password?: string }) => {
-    setIsLoading(true);
-    
-    try {
-      if (!user) {
-        throw new Error('No hay usuario autenticado');
+      // Verificar si el email ya existe
+      if (users.some(u => u.email === data.email)) {
+        throw new Error('El correo electrónico ya está registrado');
       }
-
-      // Implementar actualización en el backend
-      const response = await fetch(`https://gestion-proyectos-backend-9nj0.onrender.com/api/users/${user.email}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.message || 'Error al actualizar usuario');
+      
+      // Determinar si es el primer usuario (será admin)
+      const isFirstUser = users.length === 0;
+      
+      // Crear nuevo usuario
+      const newUser: StoredUser = {
+        id: Date.now().toString(),
+        nombre: data.nombre,
+        username: data.username,
+        email: data.email,
+        password: data.password,
+        empresa: data.empresa,
+        role: isFirstUser ? 'admin' : 'user',
+        createdAt: new Date().toISOString()
+      };
+      
+      // Guardar en localStorage
+      const updatedUsers = [...users, newUser];
+      saveUsers(updatedUsers);
+      
+      // Si es el primer usuario, iniciar sesión automáticamente
+      if (isFirstUser) {
+        const loggedUser: User = {
+          id: newUser.id,
+          nombre: newUser.nombre,
+          username: newUser.username,
+          email: newUser.email,
+          empresa: newUser.empresa,
+          role: newUser.role,
+          createdAt: newUser.createdAt
+        };
+        
+        const sessionData = {
+          user: loggedUser,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        };
+        
+        localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(sessionData));
+        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(loggedUser));
+        
+        setUser(loggedUser);
+        setIsAuthenticated(true);
       }
-
-      // Actualizar usuario local
-      setUser({
-        ...user,
-        name: data.nombre || user.name,
-        username: data.username || user.username
-      });
-
-      console.log('✅ Usuario actualizado exitosamente');
       
     } catch (error) {
-      console.error('❌ Error al actualizar usuario:', error);
+      console.error('Error en registro:', error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -149,30 +263,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    localStorage.removeItem(STORAGE_KEYS.SESSION);
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    localStorage.removeItem('current_user');
+    localStorage.removeItem('token');
     setUser(null);
-    localStorage.removeItem('rpa_token');
-    console.log('👋 Sesión cerrada');
+    setIsAuthenticated(false);
   };
 
-  // Verificar si hay sesión guardada al iniciar
-  useEffect(() => {
-    const token = localStorage.getItem('rpa_token');
-    if (token) {
-      // Aquí podrías validar el token con el backend
-      // Por ahora, solo limpiamos si hay problemas
+  const updateUser = (userData: Partial<User>) => {
+    if (user) {
+      const updatedUser = { ...user, ...userData };
+      setUser(updatedUser);
+      
+      // Actualizar en localStorage para sesión mock
+      const sessionData = localStorage.getItem(STORAGE_KEYS.SESSION);
+      if (sessionData) {
+        const parsed = JSON.parse(sessionData);
+        parsed.user = updatedUser;
+        localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(parsed));
+      }
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedUser));
+      
+      // Actualizar en localStorage para sesión real (API backend)
+      localStorage.setItem('current_user', JSON.stringify(updatedUser));
+      
+      // También actualizar en la lista de usuarios
+      const users = loadUsers();
+      const updatedUsers = users.map(u => 
+        u.id === user.id 
+          ? { ...u, nombre: updatedUser.nombre, email: updatedUser.email, empresa: updatedUser.empresa }
+          : u
+      );
+      saveUsers(updatedUsers);
     }
-  }, []);
+  };
 
   return (
-    <AuthContext.Provider value={{ 
-      login, 
-      register,
-      logout,
-      updateUser,
-      isLoading, 
-      user,
-      isAuthenticated: !!user 
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated,
+        isLoading,
+        login,
+        register,
+        logout,
+        updateUser
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

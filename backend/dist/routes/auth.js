@@ -3,159 +3,363 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const express_1 = __importDefault(require("express"));
+// src/routes/auth.ts
+const express_1 = require("express");
 const express_validator_1 = require("express-validator");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const bcrypt_1 = __importDefault(require("bcrypt")); // <-- IMPORTAR bcrypt
+const bcrypt_1 = __importDefault(require("bcrypt"));
 const User_1 = require("../models/User");
 const auth_1 = require("../middleware/auth");
-const uuid_1 = require("uuid");
-const database_1 = require("../database/database");
-const router = express_1.default.Router();
-// Registro
+const database_1 = require("../config/database");
+const mssql_1 = __importDefault(require("mssql"));
+const router = (0, express_1.Router)();
+console.log('🔐 Configurando rutas de autenticación...');
+// ============================================
+// REGISTRO DE USUARIO
+// ============================================
 router.post('/register', [
     (0, express_validator_1.body)('name').notEmpty().withMessage('El nombre es requerido'),
     (0, express_validator_1.body)('email').isEmail().withMessage('Email inválido'),
-    (0, express_validator_1.body)('password').isLength({ min: 6 }).withMessage('La contraseña debe tener al menos 6 caracteres')
+    (0, express_validator_1.body)('password').isLength({ min: 6 }).withMessage('La contraseña debe tener al menos 6 caracteres'),
+    (0, express_validator_1.body)('username').optional().isLength({ min: 3 }).withMessage('El username debe tener al menos 3 caracteres')
 ], async (req, res) => {
     try {
+        console.log('📝 Registrando usuario:', req.body.email);
         const errors = (0, express_validator_1.validationResult)(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
         }
-        const { name, email, password } = req.body;
+        const { name, email, password, username, empresa } = req.body;
         // Verificar si el usuario ya existe
         const existingUser = await User_1.UserModel.findByEmail(email);
         if (existingUser) {
-            return res.status(400).json({ message: 'El email ya está registrado' });
+            return res.status(400).json({
+                success: false,
+                message: 'El email ya está registrado'
+            });
         }
         // Crear usuario
-        const user = await User_1.UserModel.create({ name, email, password });
+        const user = await User_1.UserModel.create({
+            nombre: name,
+            email: email,
+            password: password,
+            username: username || email.split('@')[0],
+            empresa: empresa || null
+        });
         // Generar token
-        const token = jsonwebtoken_1.default.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        // Eliminar password del objeto user
-        const { password: _, ...userWithoutPassword } = user;
+        const token = jsonwebtoken_1.default.sign({ id: user.Id, email: user.Email, role: user.Rol }, process.env.JWT_SECRET || 'tu_secreto_super_secreto', { expiresIn: '24h' });
         res.json({
-            user: userWithoutPassword,
+            success: true,
+            user: {
+                id: user.Id,
+                nombre: user.Nombre,
+                email: user.Email,
+                role: user.Rol
+            },
             token,
             message: 'Usuario registrado exitosamente'
         });
     }
     catch (error) {
-        console.error('Error en registro:', error);
-        res.status(500).json({ message: 'Error al registrar usuario' });
+        console.error('❌ Error en registro:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al registrar usuario'
+        });
     }
 });
-// Login
+// ============================================
+// LOGIN
+// ============================================
 router.post('/login', [
-    (0, express_validator_1.body)('email').isEmail().withMessage('Email inválido'),
+    (0, express_validator_1.body)('email').notEmpty().withMessage('Email o usuario requerido'),
     (0, express_validator_1.body)('password').notEmpty().withMessage('La contraseña es requerida')
 ], async (req, res) => {
     try {
+        console.log('🔐 Intentando login:', req.body.email);
         const errors = (0, express_validator_1.validationResult)(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
         }
         const { email, password } = req.body;
-        // Buscar usuario
-        const user = await User_1.UserModel.findByEmail(email);
+        // Buscar usuario por email o nombre
+        const user = await User_1.UserModel.findByEmailOrUsername(email);
         if (!user) {
-            return res.status(401).json({ message: 'Credenciales inválidas' });
-        }
-        // Validar contraseña
-        const isValid = await User_1.UserModel.validatePassword(user, password);
-        if (!isValid) {
-            return res.status(401).json({ message: 'Credenciales inválidas' });
-        }
-        // Generar token
-        const token = jsonwebtoken_1.default.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        // Eliminar password del objeto user
-        const { password: _, ...userWithoutPassword } = user;
-        res.json({
-            user: userWithoutPassword,
-            token
-        });
-    }
-    catch (error) {
-        console.error('Error en login:', error);
-        res.status(500).json({ message: 'Error al iniciar sesión' });
-    }
-});
-// Solicitar recuperación de contraseña
-router.post('/forgot-password', [(0, express_validator_1.body)('email').isEmail().withMessage('Email inválido')], async (req, res) => {
-    try {
-        const errors = (0, express_validator_1.validationResult)(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
-        const { email } = req.body;
-        const db = await (0, database_1.getDatabase)();
-        const user = await User_1.UserModel.findByEmail(email);
-        if (!user) {
-            return res.json({
-                message: 'Si el email está registrado, recibirás instrucciones para recuperar tu contraseña'
+            console.log('❌ Usuario no encontrado:', email);
+            return res.status(401).json({
+                success: false,
+                message: 'Credenciales inválidas'
             });
         }
-        // Generar token de recuperación
-        const resetToken = (0, uuid_1.v4)();
-        const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 1); // Expira en 1 hora
-        await db.run(`INSERT INTO password_resets (id, user_id, token, expires_at)
-         VALUES (?, ?, ?, ?)`, [(0, uuid_1.v4)(), user.id, resetToken, expiresAt.toISOString()]);
-        // En producción, enviar email aquí
-        console.log(`Token de recuperación para ${email}: ${resetToken}`);
+        // Verificar si el usuario está activo
+        if (user.Activo === false) {
+            console.log('❌ Usuario inactivo:', email);
+            return res.status(401).json({
+                success: false,
+                message: 'Usuario inactivo. Contacta al administrador.'
+            });
+        }
+        // Validar contraseña
+        const isValid = await bcrypt_1.default.compare(password, user.PasswordHash);
+        if (!isValid) {
+            console.log('❌ Contraseña incorrecta para:', email);
+            return res.status(401).json({
+                success: false,
+                message: 'Credenciales inválidas'
+            });
+        }
+        // Generar token
+        const token = jsonwebtoken_1.default.sign({ id: user.Id, email: user.Email, role: user.Rol }, process.env.JWT_SECRET || 'tu_secreto_super_secreto', { expiresIn: '24h' });
+        console.log('✅ Login exitoso para:', email);
         res.json({
-            message: 'Se han enviado instrucciones a tu correo electrónico'
+            success: true,
+            user: {
+                id: user.Id,
+                nombre: user.Nombre,
+                email: user.Email,
+                role: user.Rol
+            },
+            token,
+            message: 'Login exitoso'
         });
     }
     catch (error) {
-        console.error('Error en forgot-password:', error);
-        res.status(500).json({ message: 'Error al procesar solicitud' });
+        console.error('❌ Error en login:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al iniciar sesión'
+        });
     }
 });
-// Resetear contraseña
-router.post('/reset-password', [
-    (0, express_validator_1.body)('token').notEmpty().withMessage('Token requerido'),
-    (0, express_validator_1.body)('password').isLength({ min: 6 }).withMessage('La contraseña debe tener al menos 6 caracteres'),
-    (0, express_validator_1.body)('confirmPassword').custom((value, { req }) => value === req.body.password)
-], async (req, res) => {
+// ============================================
+// VERIFICAR SI USUARIO EXISTE
+// ============================================
+router.post('/check-username', [(0, express_validator_1.body)('username').notEmpty().withMessage('Usuario requerido')], async (req, res) => {
     try {
-        const errors = (0, express_validator_1.validationResult)(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
-        const { token, password } = req.body;
+        const { username } = req.body;
         const db = await (0, database_1.getDatabase)();
-        // Buscar token
-        const reset = await db.get('SELECT * FROM password_resets WHERE token = ? AND used = 0 AND expires_at > datetime("now")', [token]);
-        if (!reset) {
-            return res.status(400).json({ message: 'Token inválido o expirado' });
-        }
-        // Actualizar contraseña
-        const hashedPassword = await bcrypt_1.default.hash(password, 10);
-        await db.run('UPDATE users SET password = ?, updated_at = datetime("now") WHERE id = ?', [hashedPassword, reset.user_id]);
-        // Marcar token como usado
-        await db.run('UPDATE password_resets SET used = 1 WHERE id = ?', [reset.id]);
-        res.json({ message: 'Contraseña actualizada exitosamente' });
+        const result = await db.request()
+            .input('Username', mssql_1.default.NVarChar, username)
+            .query(`
+                    SELECT * FROM Usuarios 
+                    WHERE Nombre = @Username 
+                    OR Email = @Username
+                `);
+        const user = result.recordset[0];
+        res.json({
+            success: true,
+            exists: !!user,
+            nombre: user?.Nombre || null
+        });
     }
     catch (error) {
-        console.error('Error en reset-password:', error);
-        res.status(500).json({ message: 'Error al resetear contraseña' });
+        console.error('❌ Error en check-username:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al verificar usuario'
+        });
     }
 });
-// Obtener usuario actual
+// ============================================
+// RESTABLECER CONTRASEÑA POR USUARIO
+// ============================================
+router.post('/reset-password-by-username', [
+    (0, express_validator_1.body)('username').notEmpty().withMessage('Usuario requerido'),
+    (0, express_validator_1.body)('newPassword').isLength({ min: 6 }).withMessage('La contraseña debe tener al menos 6 caracteres')
+], async (req, res) => {
+    try {
+        const { username, newPassword } = req.body;
+        const db = await (0, database_1.getDatabase)();
+        const result = await db.request()
+            .input('Username', mssql_1.default.NVarChar, username)
+            .query(`
+                    SELECT * FROM Usuarios 
+                    WHERE Nombre = @Username 
+                    OR Email = @Username
+                `);
+        const user = result.recordset[0];
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado'
+            });
+        }
+        const hashedPassword = await bcrypt_1.default.hash(newPassword, 10);
+        await db.request()
+            .input('Id', mssql_1.default.Int, user.Id)
+            .input('PasswordHash', mssql_1.default.NVarChar, hashedPassword)
+            .query(`
+                    UPDATE Usuarios 
+                    SET PasswordHash = @PasswordHash, FechaActualizacion = GETDATE() 
+                    WHERE Id = @Id
+                `);
+        res.json({
+            success: true,
+            message: 'Contraseña actualizada exitosamente'
+        });
+    }
+    catch (error) {
+        console.error('❌ Error en reset-password-by-username:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al restablecer la contraseña'
+        });
+    }
+});
+// ============================================
+// OBTENER USUARIO ACTUAL
+// ============================================
 router.get('/me', auth_1.authMiddleware, async (req, res) => {
     try {
         const user = await User_1.UserModel.findById(req.user.id);
         if (!user) {
-            return res.status(404).json({ message: 'Usuario no encontrado' });
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado'
+            });
         }
-        const { password: _, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
+        res.json({
+            success: true,
+            user: {
+                id: user.Id,
+                nombre: user.Nombre,
+                email: user.Email,
+                role: user.Rol,
+                activo: user.Activo
+            }
+        });
     }
     catch (error) {
-        console.error('Error al obtener usuario:', error);
-        res.status(500).json({ message: 'Error al obtener usuario' });
+        console.error('❌ Error al obtener usuario:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener usuario'
+        });
     }
 });
+// ============================================
+// OBTENER TODOS LOS USUARIOS (ADMIN)
+// ============================================
+router.get('/users', auth_1.authMiddleware, async (req, res) => {
+    try {
+        const users = await User_1.UserModel.findAll();
+        res.json({
+            success: true,
+            users: users.map(u => ({
+                id: u.Id,
+                name: u.Nombre,
+                email: u.Email,
+                role: u.Rol,
+                activo: u.Activo
+            }))
+        });
+    }
+    catch (error) {
+        console.error('❌ Error en getAllUsers:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener usuarios'
+        });
+    }
+});
+// ============================================
+// CAMBIAR ROL DE USUARIO (ADMIN)
+// ============================================
+router.put('/users/:id/role', auth_1.authMiddleware, [(0, express_validator_1.body)('role').notEmpty().withMessage('El rol es requerido')], async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { role } = req.body;
+        const user = await User_1.UserModel.findById(parseInt(id));
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado'
+            });
+        }
+        await User_1.UserModel.changeRole(parseInt(id), role);
+        res.json({
+            success: true,
+            message: 'Rol actualizado exitosamente'
+        });
+    }
+    catch (error) {
+        console.error('❌ Error en changeUserRole:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al cambiar rol'
+        });
+    }
+});
+// ============================================
+// ACTIVAR/DESACTIVAR USUARIO (ADMIN)
+// ============================================
+router.put('/users/:id/toggle', auth_1.authMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = await User_1.UserModel.findById(parseInt(id));
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado'
+            });
+        }
+        await User_1.UserModel.toggleActive(parseInt(id));
+        res.json({
+            success: true,
+            message: 'Estado del usuario actualizado'
+        });
+    }
+    catch (error) {
+        console.error('❌ Error en toggleUser:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al cambiar estado'
+        });
+    }
+});
+// ============================================
+// ELIMINAR USUARIO (ADMIN)
+// ============================================
+router.delete('/users/:id', auth_1.authMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const currentUserId = req.user.id;
+        if (parseInt(id) === currentUserId) {
+            return res.status(400).json({
+                success: false,
+                message: 'No puedes eliminar tu propio usuario'
+            });
+        }
+        const user = await User_1.UserModel.findById(parseInt(id));
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado'
+            });
+        }
+        await User_1.UserModel.delete(parseInt(id));
+        res.json({
+            success: true,
+            message: 'Usuario eliminado exitosamente'
+        });
+    }
+    catch (error) {
+        console.error('❌ Error en deleteUser:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al eliminar usuario'
+        });
+    }
+});
+console.log('✅ Rutas de autenticación configuradas:');
+console.log('   POST /auth/register');
+console.log('   POST /auth/login');
+console.log('   POST /auth/check-username');
+console.log('   POST /auth/reset-password-by-username');
+console.log('   GET  /auth/me');
+console.log('   GET  /auth/users');
+console.log('   PUT  /auth/users/:id/role');
+console.log('   PUT  /auth/users/:id/toggle');
+console.log('   DELETE /auth/users/:id');
 exports.default = router;
+//# sourceMappingURL=auth.js.map

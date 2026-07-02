@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import api from '../services/api';
 
 interface Proyecto {
   id: string;
@@ -15,58 +16,98 @@ interface Proyecto {
   hhReal: number;
 }
 
-interface Profesional {
+
+
+interface Ficha {
   id: string;
-  nombre: string;
-  activo: boolean;
+  nombreProyecto: string;
+  estado: string;
+}
+
+interface DashboardStats {
+  totalProfesionales: number;
+  profesionalesActivos: number;
+  totalProyectos: number;
+  proyectosActivos: number;
+  totalHHReales: number;
+  totalHHPlan: number;
+  totalVentas: number;
+  desviacionHoras: number;
+  porcentajeCumplimiento: number;
 }
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
-  const [profesionales, setProfesionales] = useState<Profesional[]>([]);
-  const [fichas, setFichas] = useState<any[]>([]);
+  const [fichas, setFichas] = useState<Ficha[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalProfesionales: 0,
+    profesionalesActivos: 0,
+    totalProyectos: 0,
+    proyectosActivos: 0,
+    totalHHReales: 0,
+    totalHHPlan: 0,
+    totalVentas: 0,
+    desviacionHoras: 0,
+    porcentajeCumplimiento: 0
+  });
+
+  // Cargar datos desde la API
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Cargar fichas (proyectos en el flujo activo)
+      const fichasResponse = await api.get('/fichas');
+      const fichasData = fichasResponse.data.success ? fichasResponse.data.data || [] : [];
+      setFichas(fichasData);
+      setProyectos(fichasData);
+
+      // Cargar profesionales
+      const profesionalesResponse = await api.get('/profesionales');
+      const profesionalesData = profesionalesResponse.data.success ? profesionalesResponse.data.data || [] : [];
+
+      // Calcular estadísticas basadas en las fichas
+      const proyectosActivos = fichasData.filter((f: any) => f.estado === 'En Curso').length;
+      const profesionalesActivos = profesionalesData.filter((p: any) => p.activo).length;
+      const totalVentas = fichasData.reduce((sum: number, f: any) => sum + (f.venta || 0), 0);
+      const totalHHReales = fichasData.reduce((sum: number, f: any) => sum + (f.hhReal || 0), 0);
+      const totalHHPlan = fichasData.reduce((sum: number, f: any) => sum + (f.hhPlanificadas || 0), 0);
+      const desviacion = totalHHReales - totalHHPlan;
+      const cumplimiento = totalHHPlan > 0 ? (totalHHReales / totalHHPlan) * 100 : 0;
+
+      setStats({
+        totalProfesionales: profesionalesData.length,
+        profesionalesActivos,
+        totalProyectos: fichasData.length,
+        proyectosActivos,
+        totalHHReales,
+        totalHHPlan,
+        totalVentas,
+        desviacionHoras: desviacion,
+        porcentajeCumplimiento: cumplimiento
+      });
+
+    } catch (err: any) {
+      console.error('Error cargando datos:', err);
+      setError(err.response?.data?.message || 'Error al cargar los datos');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadData = () => {
-      try {
-        const proyectosGuardados = localStorage.getItem('rpa_proyectos');
-        if (proyectosGuardados) {
-          setProyectos(JSON.parse(proyectosGuardados));
-        }
-
-        const profesionalesGuardados = localStorage.getItem('rpa_profesionales');
-        if (profesionalesGuardados) {
-          setProfesionales(JSON.parse(profesionalesGuardados));
-        }
-
-        const fichasGuardadas = localStorage.getItem('rpa_fichas');
-        if (fichasGuardadas) {
-          setFichas(JSON.parse(fichasGuardadas));
-        }
-      } catch (error) {
-        console.error('Error cargando datos:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadData();
-
-    const handleStorageChange = () => {
-      loadData();
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const proyectosActivos = proyectos.filter(p => p.estado === 'En Curso').length;
-  const profesionalesActivos = profesionales.filter(p => p.activo).length;
-  const totalVentas = proyectos.reduce((sum, p) => sum + (p.venta || 0), 0);
-  const totalHorasHombre = proyectos.reduce((sum, p) => sum + (p.hhReal || 0), 0);
+  // Obtener proyectos con más HH
+  const proyectosTopHH = [...proyectos]
+    .sort((a, b) => (b.hhReal || 0) - (a.hhReal || 0))
+    .slice(0, 5);
 
   const modules = [
     {
@@ -78,12 +119,12 @@ const Dashboard: React.FC = () => {
       bgColor: 'bg-blue-50',
       textColor: 'text-blue-600',
       route: '/profesionales',
-      stats: `${profesionalesActivos} profesionales activos`
+      stats: `${stats.profesionalesActivos} profesionales activos`
     },
     {
       id: 2,
       title: 'Fichas',
-      description: 'Gestión de fichas de proyectos RPA',
+      description: 'Gestión de fichas de proyectos',
       icon: '📋',
       color: 'from-purple-500 to-pink-500',
       bgColor: 'bg-purple-50',
@@ -93,14 +134,36 @@ const Dashboard: React.FC = () => {
     },
     {
       id: 3,
-      title: 'Dashboard',
+      title: 'Dashboard HH',
       description: 'Horas hombre, proyectos y métricas',
       icon: '📊',
       color: 'from-green-500 to-emerald-500',
       bgColor: 'bg-green-50',
       textColor: 'text-green-600',
       route: '/dashboard-proyectos',
-      stats: `${proyectosActivos} proyectos activos`
+      stats: `${stats.proyectosActivos} proyectos activos`
+    },
+    {
+      id: 4,
+      title: 'Solicitud de Proyecto',
+      description: 'Crear nueva solicitud de proyecto',
+      icon: '📝',
+      color: 'from-orange-500 to-red-500',
+      bgColor: 'bg-orange-50',
+      textColor: 'text-orange-600',
+      route: '/solicitud-proyecto',
+      stats: 'Nueva solicitud'
+    },
+    {
+      id: 5,
+      title: 'Dashboard Profesional',
+      description: 'Proyectos y horas por profesional',
+      icon: '👨‍💻',
+      color: 'from-purple-500 to-indigo-500',
+      bgColor: 'bg-purple-50',
+      textColor: 'text-purple-600',
+      route: '/dashboard-profesional',
+      stats: `${stats.profesionalesActivos} profesionales`
     }
   ];
 
@@ -120,10 +183,26 @@ const Dashboard: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
+          <p className="text-red-600 text-center">{error}</p>
+          <button
+            onClick={loadData}
+            className="mt-4 w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       {/* Navbar Responsive */}
-      <nav className="bg-white shadow-lg border-b border-gray-200">
+      <nav className="bg-white shadow-lg border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row justify-between items-center py-3 sm:py-0 sm:h-16">
             <div className="flex items-center w-full sm:w-auto justify-between sm:justify-start mb-2 sm:mb-0">
@@ -136,7 +215,7 @@ const Dashboard: React.FC = () => {
                 <span className="ml-2 sm:ml-3 text-lg sm:text-xl font-semibold text-gray-800">Sistema Gestión</span>
               </div>
               <span className="text-xs sm:text-sm text-gray-600 ml-2 truncate max-w-[120px] sm:max-w-none">
-                {user?.name || 'Usuario'}
+                {user?.nombre || 'Usuario'}
               </span>
             </div>
             
@@ -151,6 +230,17 @@ const Dashboard: React.FC = () => {
                 </svg>
                 <span className="hidden xs:inline">Mi Perfil</span>
                 <span className="xs:hidden">Perfil</span>
+              </button>
+
+              {/* Botón de Actualizar */}
+              <button
+                onClick={loadData}
+                className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center px-2 sm:px-3 py-1.5 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <svg className="w-3 h-3 sm:w-4 sm:h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Actualizar
               </button>
 
               {/* Botón de Cerrar sesión */}
@@ -182,7 +272,7 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* Grid de módulos principales */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 md:gap-8 mb-8 sm:mb-10">
           {modules.map((module) => (
             <div
               key={module.id}
@@ -221,27 +311,117 @@ const Dashboard: React.FC = () => {
           ))}
         </div>
 
-        {/* Resumen rápido */}
-        <div className="mt-8 sm:mt-10 md:mt-12 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-600">Horas Hombre</p>
-                <p className="text-base sm:text-lg md:text-2xl font-bold text-gray-900">{totalHorasHombre.toLocaleString()}</p>
-              </div>
-              <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
-                <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+        {/* Tarjetas de resumen HH */}
+        <div className="mb-8">
+          <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Métricas de Horas Hombre (HH)
+          </h2>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6 text-white">
+              <p className="text-xs opacity-90">HH Reales Ejecutadas</p>
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold">{stats.totalHHReales.toLocaleString()} hrs</p>
+              <p className="text-xs opacity-75 mt-1">Total de horas ejecutadas en proyectos</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6 text-white">
+              <p className="text-xs opacity-90">HH Planificadas</p>
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold">{stats.totalHHPlan.toLocaleString()} hrs</p>
+              <p className="text-xs opacity-75 mt-1">Total de horas presupuestadas</p>
+            </div>
+
+            <div className={`rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6 text-white ${stats.desviacionHoras >= 0 ? 'bg-gradient-to-br from-red-500 to-red-600' : 'bg-gradient-to-br from-green-500 to-green-600'}`}>
+              <p className="text-xs opacity-90">Desviación HH</p>
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold">
+                {stats.desviacionHoras >= 0 ? '+' : ''}{stats.desviacionHoras.toLocaleString()} hrs
+              </p>
+              <p className="text-xs opacity-75 mt-1">
+                {stats.desviacionHoras >= 0 ? 'Sobre ejecución' : 'Sub ejecución'}
+              </p>
+            </div>
+
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6 text-white">
+              <p className="text-xs opacity-90">Cumplimiento</p>
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold">{stats.porcentajeCumplimiento.toFixed(1)}%</p>
+              <p className="text-xs opacity-75 mt-1">Real vs Planificado</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabla de proyectos con más HH */}
+        {proyectosTopHH.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              Proyectos con mayor HH Real
+            </h2>
+            
+            <div className="bg-white rounded-lg sm:rounded-xl shadow-md overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proyecto</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cliente</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">HH Plan</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">HH Real</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Desviación</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {proyectosTopHH.map((proyecto) => {
+                      const desviacion = (proyecto.hhReal || 0) - (proyecto.hhPlanificadas || 0);
+                      const desviacionColor = desviacion > 0 ? 'text-red-600' : desviacion < 0 ? 'text-green-600' : 'text-gray-600';
+                      return (
+                        <tr key={proyecto.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {proyecto.nombreProyecto}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                            {proyecto.cliente}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-600">
+                            {proyecto.hhPlanificadas || 0} hrs
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-center font-semibold text-indigo-600">
+                            {proyecto.hhReal || 0} hrs
+                          </td>
+                          <td className={`px-4 py-3 whitespace-nowrap text-sm text-center font-medium ${desviacionColor}`}>
+                            {desviacion > 0 ? '+' : ''}{desviacion} hrs
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              proyecto.estado === 'En Curso' ? 'bg-green-100 text-green-800' :
+                              proyecto.estado === 'Completada' ? 'bg-blue-100 text-blue-800' :
+                              proyecto.estado === 'Standby' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {proyecto.estado}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
+        )}
 
+        {/* Resumen rápido adicional */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
           <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-gray-600">Proyectos Activos</p>
-                <p className="text-base sm:text-lg md:text-2xl font-bold text-gray-900">{proyectosActivos}</p>
+                <p className="text-base sm:text-lg md:text-2xl font-bold text-gray-900">{stats.proyectosActivos}</p>
               </div>
               <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-green-100 rounded-lg flex items-center justify-center">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -255,7 +435,7 @@ const Dashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-gray-600">Profesionales</p>
-                <p className="text-base sm:text-lg md:text-2xl font-bold text-gray-900">{profesionalesActivos}</p>
+                <p className="text-base sm:text-lg md:text-2xl font-bold text-gray-900">{stats.profesionalesActivos}</p>
               </div>
               <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-purple-100 rounded-lg flex items-center justify-center">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -268,8 +448,22 @@ const Dashboard: React.FC = () => {
           <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
             <div className="flex items-center justify-between">
               <div>
+                <p className="text-xs text-gray-600">Total Proyectos</p>
+                <p className="text-base sm:text-lg md:text-2xl font-bold text-gray-900">{stats.totalProyectos}</p>
+              </div>
+              <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
+            <div className="flex items-center justify-between">
+              <div>
                 <p className="text-xs text-gray-600">Venta Total</p>
-                <p className="text-base sm:text-lg md:text-2xl font-bold text-gray-900">${totalVentas.toLocaleString()}</p>
+                <p className="text-base sm:text-lg md:text-2xl font-bold text-gray-900">${stats.totalVentas.toLocaleString()}</p>
               </div>
               <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -279,6 +473,24 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Nota explicativa si hay HH muy altas */}
+        {stats.totalHHReales > 1000 && (
+          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="text-sm font-semibold text-yellow-800">Información de HH Reales</p>
+                <p className="text-xs text-yellow-700 mt-1">
+                  El total de HH Reales ({stats.totalHHReales.toLocaleString()} hrs) incluye la suma de todas las horas registradas en los proyectos.
+                  Si este número parece alto, revisa los proyectos con mayores valores en la tabla superior.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

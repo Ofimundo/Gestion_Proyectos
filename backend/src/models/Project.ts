@@ -1,350 +1,278 @@
 import { getDatabase } from '../database/database';
-import { v4 as uuidv4 } from 'uuid';
-
-export interface ProjectStage {
-  id: string;
-  project_id: string;
-  name: string;
-  status: string;
-  hh_planificadas: number;
-  hh_real: number;
-}
-
-export interface ProjectRisk {
-  id: string;
-  project_id: string;
-  description: string;
-  action: string | null;
-  responsible: string | null;
-  date: string | null;
-}
+import sql from 'mssql';
 
 export interface Project {
-  id: string;
-  code: string;
-  name: string;
-  client: string;
-  leader: string;
-  description: string | null;
-  technologies: string | null;
-  commercial_manager: string | null;
-  sale_amount: number;
-  hh_implementation: number;
-  hh_period: number;
-  start_date: string | null;
-  end_date: string | null;
-  client_contact: string | null;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  stages?: ProjectStage[];
-  risks?: ProjectRisk[];
-  resources?: string[];
+    id: string;
+    code: string;
+    name: string;
+    client: string;
+    leader: string;
+    description: string | null;
+    technologies: string | null;
+    commercial_manager: string | null;
+    sale_amount: number;
+    hh_implementation: number;
+    hh_period: number;
+    start_date: string | null;
+    end_date: string | null;
+    client_contact: string | null;
+    status: string;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface CreateProjectDTO {
-  name: string;
-  client: string;
-  leader: string;
-  description?: string;
-  technologies?: string;
-  commercialManager?: string;
-  saleAmount?: number;
-  hhImplementation?: number;
-  hhPeriod?: number;
-  startDate?: string;
-  endDate?: string;
-  clientContact?: string;
-  stages?: Array<{
     name: string;
-    status: string;
-    hhPlanificadas: number;
-    hhReal: number;
-  }>;
-  risks?: Array<{
-    description: string;
-    action?: string;
-    responsible?: string;
-    date?: string;
-  }>;
-  resources?: string[];
+    client: string;
+    leader: string;
+    description?: string;
+    technologies?: string;
+    saleAmount?: number;
+    hhPlanificadas?: number;
+    hhReal?: number;
+    startDate?: string;
+    endDate?: string;
 }
 
 export class ProjectModel {
-  static generateCode(name: string): string {
-    const letters = name
-      .replace(/[^a-zA-Z]/g, '')
-      .toUpperCase()
-      .slice(0, 4)
-      .padEnd(4, 'X');
-    
-    const numbers = Math.floor(1000 + Math.random() * 9000).toString();
-    return `${letters}-${numbers}`;
-  }
-
-  static async create(data: CreateProjectDTO): Promise<Project> {
-    const db = await getDatabase();
-    const id = uuidv4();
-    const code = this.generateCode(data.name);
-
-    await db.run(
-      `INSERT INTO projects (
-        id, code, name, client, leader, description, technologies,
-        commercial_manager, sale_amount, hh_implementation, hh_period,
-        start_date, end_date, client_contact, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [
-        id, code, data.name, data.client, data.leader, data.description || null,
-        data.technologies || null, data.commercialManager || null, data.saleAmount || 0,
-        data.hhImplementation || 0, data.hhPeriod || 0, data.startDate || null,
-        data.endDate || null, data.clientContact || null, 'Activo'
-      ]
-    );
-
-    // Crear etapas
-    if (data.stages && data.stages.length > 0) {
-      for (const stage of data.stages) {
-        await db.run(
-          `INSERT INTO project_stages (id, project_id, name, status, hh_planificadas, hh_real)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [uuidv4(), id, stage.name, stage.status || 'No Iniciada', stage.hhPlanificadas || 0, stage.hhReal || 0]
-        );
-      }
-    } else {
-      // Crear etapas por defecto
-      const defaultStages = [
-        { name: 'Distribución de los Bot', status: 'No Iniciada', hhPlanificadas: 0, hhReal: 0 },
-        { name: 'Desarrollo de los Bot Demo', status: 'No Iniciada', hhPlanificadas: 0, hhReal: 0 },
-        { name: 'Presentación de la Demo', status: 'No Iniciada', hhPlanificadas: 0, hhReal: 0 },
-        { name: 'Desarrollo de los bots para el cliente', status: 'No Iniciada', hhPlanificadas: 0, hhReal: 0 },
-        { name: 'Desarrollo del Informe de Saldo', status: 'No Iniciada', hhPlanificadas: 0, hhReal: 0 },
-        { name: 'Implementación de Prueba del RPA', status: 'No Iniciada', hhPlanificadas: 0, hhReal: 0 },
-        { name: 'Desarrollo del Flujo de Caja', status: 'No Iniciada', hhPlanificadas: 0, hhReal: 0 }
-      ];
-      
-      for (const stage of defaultStages) {
-        await db.run(
-          `INSERT INTO project_stages (id, project_id, name, status, hh_planificadas, hh_real)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [uuidv4(), id, stage.name, stage.status, stage.hhPlanificadas, stage.hhReal]
-        );
-      }
+    static generateCode(name: string): string {
+        const letters = name
+            .replace(/[^a-zA-Z]/g, '')
+            .toUpperCase()
+            .slice(0, 4)
+            .padEnd(4, 'X');
+        
+        const numbers = Math.floor(1000 + Math.random() * 9000).toString();
+        return `${letters}-${numbers}`;
     }
 
-    // Crear riesgos
-    if (data.risks && data.risks.length > 0) {
-      for (const risk of data.risks) {
-        await db.run(
-          `INSERT INTO project_risks (id, project_id, description, action, responsible, date)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [uuidv4(), id, risk.description, risk.action || null, risk.responsible || null, risk.date || null]
-        );
-      }
+    static async create(data: CreateProjectDTO): Promise<Project> {
+        const db = await getDatabase();
+        const code = this.generateCode(data.name);
+
+        const result = await db.request()
+            .input('Codigo', sql.NVarChar, code)
+            .input('NombreProyecto', sql.NVarChar, data.name)
+            .input('Cliente', sql.NVarChar, data.client)
+            .input('Lider', sql.NVarChar, data.leader)
+            .input('Venta', sql.Decimal(18, 2), data.saleAmount || 0)
+            .input('HHPlanificadas', sql.Decimal(10, 2), data.hhPlanificadas || 0)
+            .input('HHReal', sql.Decimal(10, 2), data.hhReal || 0)
+            .input('FechaInicio', sql.Date, data.startDate ? new Date(data.startDate) : null)
+            .input('FechaFin', sql.Date, data.endDate ? new Date(data.endDate) : null)
+            .input('Descripcion', sql.NVarChar, data.description || null)
+            .query(`
+                INSERT INTO Proyectos (Codigo, NombreProyecto, Cliente, Lider, Estado, Avance, Venta, HHPlanificadas, HHReal, FechaInicio, FechaFin, Descripcion, FechaCreacion)
+                VALUES (@Codigo, @NombreProyecto, @Cliente, @Lider, 'No Iniciada', 0, @Venta, @HHPlanificadas, @HHReal, @FechaInicio, @FechaFin, @Descripcion, GETDATE());
+                SELECT SCOPE_IDENTITY() AS Id;
+            `);
+
+        const newId = result.recordset[0].Id;
+        const project = await this.findById(newId);
+        if (!project) {
+            throw new Error('Error al crear el proyecto');
+        }
+        return project;
     }
 
-    // Asignar recursos
-    if (data.resources && data.resources.length > 0) {
-      for (const professionalId of data.resources) {
-        await db.run(
-          `INSERT INTO project_resources (project_id, professional_id)
-           VALUES (?, ?)`,
-          [id, professionalId]
-        );
-      }
+    static async findById(id: string | number): Promise<Project | undefined> {
+        const db = await getDatabase();
+        const result = await db.request()
+            .input('Id', sql.Int, Number(id))
+            .query('SELECT * FROM Proyectos WHERE Id = @Id');
+        
+        const project = result.recordset[0];
+        return this.parseProject(project);
     }
 
-    const project = await this.findById(id);
-    if (!project) {
-      throw new Error('Error al crear el proyecto');
-    }
-    return project;
-  }
-
-  static async findById(id: string): Promise<Project | undefined> {
-    const db = await getDatabase();
-    const project = await db.get('SELECT * FROM projects WHERE id = ?', [id]);
-    
-    if (!project) return undefined;
-
-    // Obtener etapas
-    const stages = await db.all(
-      'SELECT * FROM project_stages WHERE project_id = ? ORDER BY name',
-      [id]
-    );
-
-    // Obtener riesgos
-    const risks = await db.all(
-      'SELECT * FROM project_risks WHERE project_id = ?',
-      [id]
-    );
-
-    // Obtener recursos
-    const resources = await db.all(
-      'SELECT professional_id FROM project_resources WHERE project_id = ?',
-      [id]
-    );
-
-    return {
-      ...project,
-      stages,
-      risks,
-      resources: resources.map(r => r.professional_id)
-    };
-  }
-
-  static async findAll(): Promise<Project[]> {
-    const db = await getDatabase();
-    const projects = await db.all('SELECT * FROM projects ORDER BY created_at DESC');
-    
-    const result: Project[] = [];
-    for (const project of projects) {
-      const fullProject = await this.findById(project.id);
-      if (fullProject) result.push(fullProject);
-    }
-    
-    return result;
-  }
-
-  static async update(id: string, data: Partial<CreateProjectDTO>): Promise<Project> {
-    const db = await getDatabase();
-    
-    // Verificar si el proyecto existe
-    const existing = await this.findById(id);
-    if (!existing) {
-      throw new Error('Proyecto no encontrado');
+    static async getByCode(code: string): Promise<Project | undefined> {
+        const db = await getDatabase();
+        const result = await db.request()
+            .input('code', sql.NVarChar, code)
+            .query('SELECT * FROM Proyectos WHERE Codigo = @code');
+        
+        const project = result.recordset[0];
+        return this.parseProject(project);
     }
 
-    // Actualizar proyecto
-    const updates: any = {};
-    if (data.name !== undefined) updates.name = data.name;
-    if (data.client !== undefined) updates.client = data.client;
-    if (data.leader !== undefined) updates.leader = data.leader;
-    if (data.description !== undefined) updates.description = data.description;
-    if (data.technologies !== undefined) updates.technologies = data.technologies;
-    if (data.commercialManager !== undefined) updates.commercial_manager = data.commercialManager;
-    if (data.saleAmount !== undefined) updates.sale_amount = data.saleAmount;
-    if (data.hhImplementation !== undefined) updates.hh_implementation = data.hhImplementation;
-    if (data.hhPeriod !== undefined) updates.hh_period = data.hhPeriod;
-    if (data.startDate !== undefined) updates.start_date = data.startDate;
-    if (data.endDate !== undefined) updates.end_date = data.endDate;
-    if (data.clientContact !== undefined) updates.client_contact = data.clientContact;
+    static async getProjectSummary(id: string | number): Promise<any | undefined> {
+        const p = await this.findById(id);
+        if (!p) return undefined;
 
-    if (Object.keys(updates).length > 0) {
-      const fields = Object.keys(updates).map(key => `${key} = ?`).join(', ');
-      const values = [...Object.values(updates), id];
+        const db = await getDatabase();
+        const res = await db.request()
+            .input('Id', sql.Int, Number(id))
+            .query(`
+                SELECT p.Nombre 
+                FROM Profesionales p
+                INNER JOIN ProyectosAsignados pa ON p.Id = pa.ProfesionalId
+                WHERE pa.SolicitudId = @Id
+            `);
 
-      await db.run(
-        `UPDATE projects SET ${fields}, updated_at = datetime('now') WHERE id = ?`,
-        values
-      );
+        return {
+            ...p,
+            resources_count: res.recordset.length,
+            stages_count: 0,
+            risks_count: 0
+        };
     }
 
-    // Actualizar etapas (eliminar y recrear)
-    if (data.stages) {
-      await db.run('DELETE FROM project_stages WHERE project_id = ?', [id]);
-      for (const stage of data.stages) {
-        await db.run(
-          `INSERT INTO project_stages (id, project_id, name, status, hh_planificadas, hh_real)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [uuidv4(), id, stage.name, stage.status || 'No Iniciada', stage.hhPlanificadas || 0, stage.hhReal || 0]
-        );
-      }
+    static async getProjectResources(id: string | number): Promise<any[]> {
+        const db = await getDatabase();
+        const res = await db.request()
+            .input('Id', sql.Int, Number(id))
+            .query(`
+                SELECT p.* 
+                FROM Profesionales p
+                INNER JOIN ProyectosAsignados pa ON p.Id = pa.ProfesionalId
+                WHERE pa.SolicitudId = @Id
+            `);
+
+        return res.recordset.map((prof: any) => ({
+            id: String(prof.Id),
+            name: prof.Nombre,
+            email: prof.Email,
+            role: prof.Cargo
+        }));
     }
 
-    // Actualizar riesgos
-    if (data.risks) {
-      await db.run('DELETE FROM project_risks WHERE project_id = ?', [id]);
-      for (const risk of data.risks) {
-        await db.run(
-          `INSERT INTO project_risks (id, project_id, description, action, responsible, date)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [uuidv4(), id, risk.description, risk.action || null, risk.responsible || null, risk.date || null]
-        );
-      }
+    static async updateStatus(id: string | number, status: string): Promise<boolean> {
+        const db = await getDatabase();
+        const result = await db.request()
+            .input('Id', sql.Int, Number(id))
+            .input('Estado', sql.NVarChar, status)
+            .query('UPDATE Proyectos SET Estado = @Estado, FechaActualizacion = GETDATE() WHERE Id = @Id');
+
+        return result.rowsAffected[0] > 0;
     }
 
-    // Actualizar recursos
-    if (data.resources) {
-      await db.run('DELETE FROM project_resources WHERE project_id = ?', [id]);
-      for (const professionalId of data.resources) {
-        await db.run(
-          `INSERT INTO project_resources (project_id, professional_id)
-           VALUES (?, ?)`,
-          [id, professionalId]
-        );
-      }
+    static async findAll(): Promise<Project[]> {
+        const db = await getDatabase();
+        const result = await db.request()
+            .query('SELECT * FROM Proyectos ORDER BY FechaCreacion DESC');
+        
+        return result.recordset.map(p => this.parseProject(p)!);
     }
 
-    const project = await this.findById(id);
-    if (!project) {
-      throw new Error('Error al actualizar el proyecto');
+    static async update(id: string | number, data: Partial<CreateProjectDTO>): Promise<Project> {
+        const db = await getDatabase();
+        const fields: string[] = [];
+        const request = db.request();
+
+        if (data.name) {
+            fields.push('NombreProyecto = @NombreProyecto');
+            request.input('NombreProyecto', sql.NVarChar, data.name);
+        }
+        if (data.client) {
+            fields.push('Cliente = @Cliente');
+            request.input('Cliente', sql.NVarChar, data.client);
+        }
+        if (data.leader) {
+            fields.push('Lider = @Lider');
+            request.input('Lider', sql.NVarChar, data.leader);
+        }
+        if (data.saleAmount !== undefined) {
+            fields.push('Venta = @Venta');
+            request.input('Venta', sql.Decimal(18, 2), data.saleAmount);
+        }
+        if (data.hhPlanificadas !== undefined) {
+            fields.push('HHPlanificadas = @HHPlanificadas');
+            request.input('HHPlanificadas', sql.Decimal(10, 2), data.hhPlanificadas);
+        }
+        if (data.hhReal !== undefined) {
+            fields.push('HHReal = @HHReal');
+            request.input('HHReal', sql.Decimal(10, 2), data.hhReal);
+        }
+        if (data.startDate !== undefined) {
+            fields.push('FechaInicio = @FechaInicio');
+            request.input('FechaInicio', sql.Date, data.startDate ? new Date(data.startDate) : null);
+        }
+        if (data.endDate !== undefined) {
+            fields.push('FechaFin = @FechaFin');
+            request.input('FechaFin', sql.Date, data.endDate ? new Date(data.endDate) : null);
+        }
+        if (data.description !== undefined) {
+            fields.push('Descripcion = @Descripcion');
+            request.input('Descripcion', sql.NVarChar, data.description);
+        }
+
+        if (fields.length > 0) {
+            request.input('Id', sql.Int, Number(id));
+            await request.query(`
+                UPDATE Proyectos 
+                SET ${fields.join(', ')}, FechaActualizacion = GETDATE() 
+                WHERE Id = @Id
+            `);
+        }
+
+        const project = await this.findById(id);
+        if (!project) {
+            throw new Error('Proyecto no encontrado');
+        }
+        return project;
     }
-    return project;
-  }
 
-  static async delete(id: string): Promise<void> {
-    const db = await getDatabase();
-    
-    // Verificar si el proyecto existe
-    const existing = await this.findById(id);
-    if (!existing) {
-      throw new Error('Proyecto no encontrado');
+    static async delete(id: string | number): Promise<void> {
+        const db = await getDatabase();
+        await db.request()
+            .input('Id', sql.Int, Number(id))
+            .query('DELETE FROM Proyectos WHERE Id = @Id');
     }
 
-    await db.run('DELETE FROM projects WHERE id = ?', [id]);
-  }
+    static async search(term: string): Promise<Project[]> {
+        const db = await getDatabase();
+        const searchTerm = `%${term}%`;
 
-  static async search(term: string): Promise<Project[]> {
-    const db = await getDatabase();
-    const searchTerm = `%${term}%`;
-    
-    const projects = await db.all(
-      `SELECT * FROM projects 
-       WHERE code LIKE ? OR name LIKE ? OR client LIKE ?
-       ORDER BY created_at DESC`,
-      [searchTerm, searchTerm, searchTerm]
-    );
+        const result = await db.request()
+            .input('searchTerm', sql.NVarChar, searchTerm)
+            .query(`
+                SELECT * FROM Proyectos 
+                WHERE NombreProyecto LIKE @searchTerm 
+                   OR Cliente LIKE @searchTerm 
+                   OR Lider LIKE @searchTerm
+                ORDER BY FechaCreacion DESC
+            `);
 
-    const result: Project[] = [];
-    for (const project of projects) {
-      const fullProject = await this.findById(project.id);
-      if (fullProject) result.push(fullProject);
+        return result.recordset.map(p => this.parseProject(p)!);
     }
-    
-    return result;
-  }
 
-  static async getStats(): Promise<{
-    totalProjects: number;
-    totalHH: number;
-    activeProjects: number;
-    totalResources: number;
-  }> {
-    const db = await getDatabase();
-    
-    const totalProjects = await db.get('SELECT COUNT(*) as count FROM projects');
-    const totalHH = await db.get('SELECT SUM(hh_implementation) as total FROM projects');
-    const activeProjects = await db.get(
-      `SELECT COUNT(DISTINCT project_id) as count FROM project_stages WHERE status = 'En Curso'`
-    );
-    const totalResources = await db.get(
-      'SELECT COUNT(DISTINCT professional_id) as count FROM project_resources'
-    );
+    static async getStats(): Promise<any> {
+        const db = await getDatabase();
+        const result = await db.request().query(`
+            SELECT 
+                COUNT(*) AS total,
+                SUM(CASE WHEN Estado = 'En Curso' THEN 1 ELSE 0 END) AS en_curso,
+                SUM(CASE WHEN Estado = 'No Iniciada' THEN 1 ELSE 0 END) AS no_iniciadas,
+                SUM(CASE WHEN Estado = 'Completada' THEN 1 ELSE 0 END) AS completadas,
+                ISNULL(SUM(Venta), 0) AS total_sale,
+                ISNULL(SUM(HHPlanificadas), 0) AS total_hh_planificadas,
+                ISNULL(SUM(HHReal), 0) AS total_hh_real
+            FROM Proyectos
+        `);
+        return result.recordset[0];
+    }
 
-    return {
-      totalProjects: totalProjects?.count || 0,
-      totalHH: totalHH?.total || 0,
-      activeProjects: activeProjects?.count || 0,
-      totalResources: totalResources?.count || 0
-    };
-  }
-
-  static async getByCode(code: string): Promise<Project | undefined> {
-    const db = await getDatabase();
-    const project = await db.get('SELECT * FROM projects WHERE code = ?', [code]);
-    
-    if (!project) return undefined;
-    
-    return this.findById(project.id);
-  }
+    private static parseProject(p: any): Project | undefined {
+        if (!p) return undefined;
+        return {
+            id: String(p.Id),
+            code: p.Codigo,
+            name: p.NombreProyecto,
+            client: p.Cliente,
+            leader: p.Lider,
+            description: p.Descripcion,
+            technologies: '',
+            commercial_manager: '',
+            sale_amount: Number(p.Venta || 0),
+            hh_implementation: Number(p.HHPlanificadas || 0),
+            hh_period: 0,
+            start_date: p.FechaInicio ? new Date(p.FechaInicio).toISOString().split('T')[0] : null,
+            end_date: p.FechaFin ? new Date(p.FechaFin).toISOString().split('T')[0] : null,
+            client_contact: '',
+            status: p.Estado,
+            created_at: p.FechaCreacion ? new Date(p.FechaCreacion).toISOString() : new Date().toISOString(),
+            updated_at: p.FechaActualizacion ? new Date(p.FechaActualizacion).toISOString() : new Date().toISOString()
+        };
+    }
 }
+export default ProjectModel;

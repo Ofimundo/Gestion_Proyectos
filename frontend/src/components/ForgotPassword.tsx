@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import authService from '../services/authService';
 
 interface ForgotPasswordProps {
   onSwitchToLogin: () => void;
@@ -15,10 +16,7 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onSwitchToLogin }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<'username' | 'password'>('username');
 
-  // 🔥 USAR VARIABLE DE ENTORNO
-  const API_URL = (import.meta as any).env.VITE_API_URL || 'https://gestion-proyectos-backend-9nj0.onrender.com/api';
-
-  // Verificar si el usuario existe (por username o email)
+  // Verificar si el usuario existe (por username, nombre o email)
   const checkUserExists = async () => {
     setError('');
     setIsLoading(true);
@@ -30,25 +28,16 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onSwitchToLogin }) => {
     }
 
     try {
-      // 🔥 CORREGIDO: Usar API_URL en lugar de localhost:3002
-      const response = await fetch(`${API_URL}/check-username`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username }),
-      });
-
-      const data = await response.json();
-
-      if (data.exists) {
+      const result = await authService.checkUsername(username);
+      
+      if (result.exists) {
         setStep('password');
         setError('');
       } else {
         setError('El nombre de usuario no está registrado');
       }
-    } catch (err) {
-      setError('Error de conexión con el servidor');
+    } catch (err: any) {
+      setError(err.message || 'Error de conexión con el servidor');
     } finally {
       setIsLoading(false);
     }
@@ -78,30 +67,16 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onSwitchToLogin }) => {
     }
 
     try {
-      // 🔥 CORREGIDO: Usar API_URL en lugar de localhost:3002
-      const response = await fetch(`${API_URL}/reset-password-by-username`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username,
-          newPassword
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
+      const result = await authService.resetPasswordByUsername(username, newPassword);
+      
+      if (result) {
         setSuccess('¡Contraseña actualizada exitosamente!');
         setTimeout(() => {
           onSwitchToLogin();
         }, 2000);
-      } else {
-        setError(data.message || 'Error al restablecer la contraseña');
       }
-    } catch (err) {
-      setError('Error de conexión con el servidor');
+    } catch (err: any) {
+      setError(err.message || 'Error al restablecer la contraseña');
     } finally {
       setIsLoading(false);
     }
@@ -175,6 +150,9 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onSwitchToLogin }) => {
                   disabled={isLoading}
                   autoFocus
                 />
+                <p className="text-xs text-gray-400 mt-1">
+                  Ingresa tu nombre de usuario, email o nombre completo
+                </p>
               </div>
 
               {error && (
@@ -249,6 +227,9 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onSwitchToLogin }) => {
                     {showPassword ? 'Ocultar' : 'Mostrar'}
                   </button>
                 </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Mínimo 6 caracteres
+                </p>
               </div>
 
               {/* Confirmar contraseña */}

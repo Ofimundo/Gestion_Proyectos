@@ -14,7 +14,9 @@ export interface RegisterData {
   name: string;
   email: string;
   password: string;
-  confirmPassword: string;
+  confirmPassword?: string;
+  username?: string;
+  empresa?: string;
 }
 
 export interface ForgotPasswordData {

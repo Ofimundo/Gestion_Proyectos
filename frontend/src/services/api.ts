@@ -13,7 +13,7 @@ const getApiUrl = (): string => {
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  return 'https://gestion-proyectos-backend-9nj0.onrender.com/api';
+  return 'http://localhost:3001/api';
 };
 
 const API_URL = getApiUrl();
@@ -23,7 +23,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 segundos de timeout
+  timeout: 30000, // Aumentado a 30 segundos para emails
 });
 
 // Interceptor para agregar token
@@ -73,7 +73,7 @@ api.interceptors.response.use(
         console.error('Error 401 - No autorizado');
         // Limpiar localStorage y redirigir al login
         localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        localStorage.removeItem('current_user');
         window.location.href = '/login';
         break;
         

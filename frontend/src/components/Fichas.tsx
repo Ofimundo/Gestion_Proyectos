@@ -1,6 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import api from '../services/api';
+import FichasProspecto from './FichasProspecto';
+
+interface Profesional {
+  id: string;
+  nombre: string;
+  correo: string;
+  cargo: string;
+  fechaRegistro: string;
+  activo: boolean;
+  horasDisponibles?: number;
+  observaciones?: string;
+}
+
+interface HorasAsignadasProfesional {
+  [profesionalId: string]: {
+    [claveProyecto: string]: {
+      proyectoId: string;
+      proyectoNombre: string;
+      horas: number;
+      mes: string;
+      anio: number;
+    };
+  };
+}
 
 interface Ficha {
   id: string;
@@ -8,12 +33,15 @@ interface Ficha {
   nombreProyecto: string;
   cliente: string;
   lider: string;
+  liderId?: string;
   descripcion: string;
   tecnologias: string;
   venta: number;
   hhImplementacion: number;
   hhPeriodo: number;
   recursos: string[];
+  recursosIds?: string[];
+  horasPorRecurso?: { [recursoId: string]: number };
   fechaInicio: string;
   fechaTermino: string;
   contraparte: string;
@@ -24,6 +52,7 @@ interface Ficha {
   alertas: string;
   acciones: string;
   responsable: string;
+  responsableId?: string;
   bitacora: Array<{
     fecha: string;
     descripcion: string;
@@ -32,8 +61,13 @@ interface Ficha {
 
 const Fichas: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const [activeTab, setActiveTab] = useState<'proyectos' | 'prospectos'>('proyectos');
   const [fichas, setFichas] = useState<Ficha[]>([]);
   const [filteredFichas, setFilteredFichas] = useState<Ficha[]>([]);
+  const [profesionales, setProfesionales] = useState<Profesional[]>([]);
+  const [horasAsignadas, setHorasAsignadas] = useState<HorasAsignadasProfesional>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
@@ -41,18 +75,27 @@ const Fichas: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [fichaToDelete, setFichaToDelete] = useState<string | null>(null);
   const [selectedEstado, setSelectedEstado] = useState<string>('todos');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  
+  // ✅ Nuevo estado para forzar recreación del modal
+  const [modalKey, setModalKey] = useState(0);
 
   const [formData, setFormData] = useState({
     codigo: '',
     nombreProyecto: '',
     cliente: '',
     lider: '',
+    liderId: '',
     descripcion: '',
     tecnologias: '',
     venta: 0,
     hhImplementacion: 0,
     hhPeriodo: 0,
     recursos: [] as string[],
+    recursosIds: [] as string[],
+    horasPorRecurso: {} as { [recursoId: string]: number },
     fechaInicio: '',
     fechaTermino: '',
     contraparte: '',
@@ -63,9 +106,247 @@ const Fichas: React.FC = () => {
     alertas: '',
     acciones: '',
     responsable: '',
+    responsableId: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showRecursosSelector, setShowRecursosSelector] = useState(false);
+  const [tempRecursos, setTempRecursos] = useState<{ id: string; nombre: string; cargo: string; horasDisponibles?: number; horasAsignadas?: number }[]>([]);
+
+  // ✅ Generar código
+  const generateCodigo = (nombre: string) => {
+    if (!nombre) return 'PROJ-0000';
+    const palabras = nombre.split(' ');
+    let letras = '';
+    if (palabras.length >= 2) {
+      letras = (palabras[0][0] + palabras[1][0]).toUpperCase();
+    } else {
+      letras = nombre.substring(0, 2).toUpperCase();
+    }
+    const numeros = Math.floor(1000 + Math.random() * 9000);
+    return `${letras}-${numeros}`;
+  };
+
+  // ✅ CORREGIDO: useEffect para convertir solicitud a ficha
+  useEffect(() => {
+    if (location.state && location.state.convertFromSolicitud && profesionales.length > 0) {
+      const solicitud = location.state.convertFromSolicitud;
+      console.log('📝 Convirtiendo solicitud a ficha:', solicitud);
+      
+      // Buscar el profesional responsable
+      const profResponsable = profesionales.find(p => 
+        p.nombre?.toLowerCase() === (solicitud.nombreResponsableProyecto || '').toLowerCase()
+      );
+      
+      // Formatear fecha correctamente (YYYY-MM-DD)
+      const fechaInicio = solicitud.fechaInicio 
+        ? solicitud.fechaInicio.split('T')[0] 
+        : '';
+      
+      // Limpiar estado anterior
+      setErrors({});
+      setTempRecursos([]);
+      setModalMode('add');
+      
+      // Establecer los datos del formulario
+      setFormData({
+        codigo: generateCodigo(solicitud.nombreProyecto || ''),
+        nombreProyecto: solicitud.nombreProyecto || '',
+        cliente: solicitud.nombreContraparteCliente || solicitud.area || '',
+        lider: '',
+        liderId: '',
+        descripcion: `Solicitud de proyecto aprobada.\nObjetivo: ${solicitud.objetivoGeneral || ''}\nPresupuesto: $${solicitud.presupuesto || 0}\nResponsable: ${solicitud.nombreResponsableProyecto || ''}`,
+        tecnologias: '',
+        venta: solicitud.presupuesto || 0,
+        hhImplementacion: 0,
+        hhPeriodo: 0,
+        recursos: [],
+        recursosIds: [],
+        horasPorRecurso: {},
+        fechaInicio: fechaInicio,
+        fechaTermino: '',
+        contraparte: solicitud.nombreContraparteCliente || '',
+        estado: 'No Iniciada',
+        avance: 0,
+        hhPlanificadas: 0,
+        hhReal: 0,
+        alertas: '',
+        acciones: '',
+        responsable: solicitud.nombreResponsableProyecto || '',
+        responsableId: profResponsable ? profResponsable.id : '',
+      });
+      
+      // ✅ Incrementar la key para forzar recreación del modal
+      setModalKey(prev => prev + 1);
+      
+      // ✅ Mostrar el modal con un pequeño delay para asegurar que el estado se actualice
+      setTimeout(() => {
+        setShowModal(true);
+      }, 100);
+      
+      // Limpiar el estado de navegación de forma segura con React Router
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, profesionales, navigate]);
+
+  // Calcular horas totales
+  const horasTotales = Number(formData.hhImplementacion) + Number(formData.hhPeriodo) + Number(formData.hhPlanificadas);
+  const cantidadRecursos = formData.recursosIds.length;
+
+  const obtenerMesAnio = (fecha: string): { mes: string; anio: number } => {
+    if (!fecha) return { mes: '', anio: 0 };
+    const date = new Date(fecha);
+    const meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+    return {
+      mes: meses[date.getMonth()],
+      anio: date.getFullYear()
+    };
+  };
+
+  const getHorasDisponibles = (prof: Profesional) => {
+    const asignacionesProf = horasAsignadas[prof.id] || {};
+    let totalHorasAsignadas = 0;
+    
+    Object.entries(asignacionesProf).forEach(([, item]) => {
+      // Si estamos editando y esta asignación corresponde al proyecto actual, no la sumamos a la carga ocupada
+      if (currentFicha && item.proyectoId === currentFicha.id) {
+        return;
+      }
+      totalHorasAsignadas += item.horas;
+    });
+
+    const base = prof.horasDisponibles !== undefined ? prof.horasDisponibles : 160;
+    const horasRestantes = base - totalHorasAsignadas;
+    return horasRestantes >= 0 ? horasRestantes : 0;
+  };
+
+  const asignarHorasAProfesionales = async (ficha: Ficha) => {
+    const recursosIds = ficha.recursosIds || [];
+    const horasPorRecurso = ficha.horasPorRecurso || {};
+    
+    if (recursosIds.length === 0) return;
+    
+    const { mes, anio } = obtenerMesAnio(ficha.fechaInicio);
+    if (!mes) return;
+    
+    const nuevasAsignaciones = { ...horasAsignadas };
+    const claveProyecto = `${ficha.id}_${mes}_${anio}`;
+    
+    recursosIds.forEach(profId => {
+      const horasAsignadasProf = horasPorRecurso[profId] || 0;
+      if (horasAsignadasProf > 0) {
+        if (!nuevasAsignaciones[profId]) {
+          nuevasAsignaciones[profId] = {};
+        }
+        
+        nuevasAsignaciones[profId][claveProyecto] = {
+          proyectoId: ficha.id,
+          proyectoNombre: ficha.nombreProyecto,
+          horas: horasAsignadasProf,
+          mes: mes,
+          anio: anio
+        };
+      }
+    });
+    
+    setHorasAsignadas(nuevasAsignaciones);
+    localStorage.setItem('rpa_horas_asignadas', JSON.stringify(nuevasAsignaciones));
+  };
+
+  const eliminarHorasDeProfesionales = (ficha: Ficha) => {
+    const recursosIds = ficha.recursosIds || [];
+    const { mes, anio } = obtenerMesAnio(ficha.fechaInicio);
+    
+    if (!mes || recursosIds.length === 0) return;
+    
+    const nuevasAsignaciones = { ...horasAsignadas };
+    const claveProyecto = `${ficha.id}_${mes}_${anio}`;
+    
+    recursosIds.forEach(profId => {
+      if (nuevasAsignaciones[profId] && nuevasAsignaciones[profId][claveProyecto]) {
+        delete nuevasAsignaciones[profId][claveProyecto];
+        if (Object.keys(nuevasAsignaciones[profId]).length === 0) {
+          delete nuevasAsignaciones[profId];
+        }
+      }
+    });
+    
+    setHorasAsignadas(nuevasAsignaciones);
+    localStorage.setItem('rpa_horas_asignadas', JSON.stringify(nuevasAsignaciones));
+  };
+
+  // Cargar profesionales desde la API
+  const loadProfesionales = async () => {
+    try {
+      const response = await api.get('/profesionales');
+      if (response.data.success) {
+        setProfesionales(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error cargando profesionales:', error);
+      setProfesionales([]);
+    }
+  };
+
+  // Cargar fichas desde la API
+  const loadFichas = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await api.get('/fichas');
+      if (response.data.success) {
+        setFichas(response.data.data || []);
+        setFilteredFichas(response.data.data || []);
+      } else {
+        setError('Error al cargar fichas');
+        setFichas([]);
+        setFilteredFichas([]);
+      }
+    } catch (err: any) {
+      console.error('Error cargando fichas:', err);
+      setError(err.response?.data?.message || 'Error al cargar fichas');
+      setFichas([]);
+      setFilteredFichas([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadHorasAsignadas = () => {
+    try {
+      const storedHoras = localStorage.getItem('rpa_horas_asignadas');
+      if (storedHoras) {
+        const parsed = JSON.parse(storedHoras);
+        setHorasAsignadas(parsed);
+      }
+    } catch (error) {
+      console.error('Error cargando horas asignadas:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadProfesionales();
+    loadFichas();
+    loadHorasAsignadas();
+
+    const handleStorageChange = () => {
+      loadProfesionales();
+      loadFichas();
+      loadHorasAsignadas();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('solicitudes-updated', handleFichasUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('solicitudes-updated', handleFichasUpdate);
+    };
+  }, []);
+
+  const handleFichasUpdate = () => {
+    loadFichas();
+  };
 
   useEffect(() => {
     let filtered = fichas;
@@ -86,35 +367,98 @@ const Fichas: React.FC = () => {
     setFilteredFichas(filtered);
   }, [searchTerm, selectedEstado, fichas]);
 
-  const generateCodigo = (nombre: string) => {
-    const palabras = nombre.split(' ');
-    let letras = '';
-    if (palabras.length >= 2) {
-      letras = (palabras[0][0] + palabras[1][0]).toUpperCase();
-    } else {
-      letras = nombre.substring(0, 2).toUpperCase();
-    }
-    const numeros = Math.floor(1000 + Math.random() * 9000);
-    return `${letras}-${numeros}`;
-  };
-
+  // ✅ CORREGIDO: handleInputChange para manejar todos los campos correctamente
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    console.log(`📝 Cambiando campo ${name} a:`, value);
     
+    // Si es nombreProyecto y estamos en modo add, generar código automáticamente
     if (name === 'nombreProyecto' && modalMode === 'add') {
       setFormData(prev => ({
         ...prev,
         [name]: value,
         codigo: generateCodigo(value)
       }));
+    } else if (name === 'lider') {
+      const selectedProf = profesionales.find(p => p.id === value);
+      setFormData(prev => ({
+        ...prev,
+        lider: selectedProf ? selectedProf.nombre : '',
+        liderId: value
+      }));
+    } else if (name === 'responsable') {
+      const selectedProf = profesionales.find(p => p.id === value);
+      setFormData(prev => ({
+        ...prev,
+        responsable: selectedProf ? selectedProf.nombre : '',
+        responsableId: value
+      }));
     } else {
+      // Para todos los demás campos, actualizar normalmente
       setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
 
-  const handleRecursosChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const recursos = e.target.value.split(',').map(r => r.trim());
-    setFormData(prev => ({ ...prev, recursos }));
+  const handleHorasPorRecursoChange = (recursoId: string, horas: number) => {
+    setFormData(prev => ({
+      ...prev,
+      horasPorRecurso: {
+        ...prev.horasPorRecurso,
+        [recursoId]: horas
+      }
+    }));
+    
+    setTempRecursos(prev => prev.map(r => 
+      r.id === recursoId ? { ...r, horasAsignadas: horas } : r
+    ));
+  };
+
+  const openRecursosSelector = () => {
+    const currentRecursos = formData.recursosIds.map(id => {
+      const prof = profesionales.find(p => p.id === id);
+      return prof ? { 
+        id: prof.id, 
+        nombre: prof.nombre, 
+        cargo: prof.cargo, 
+        horasDisponibles: getHorasDisponibles(prof),
+        horasAsignadas: formData.horasPorRecurso[id] || 0
+      } : null;
+    }).filter(p => p !== null) as { id: string; nombre: string; cargo: string; horasDisponibles?: number; horasAsignadas?: number }[];
+    
+    setTempRecursos(currentRecursos);
+    setShowRecursosSelector(true);
+  };
+
+  const addRecurso = (profesional: Profesional) => {
+    if (!tempRecursos.some(r => r.id === profesional.id)) {
+      const horasPorDefecto = cantidadRecursos > 0 ? Math.floor(horasTotales / (cantidadRecursos + 1)) : 0;
+      setTempRecursos([...tempRecursos, {
+        id: profesional.id,
+        nombre: profesional.nombre,
+        cargo: profesional.cargo,
+        horasDisponibles: getHorasDisponibles(profesional),
+        horasAsignadas: horasPorDefecto
+      }]);
+    }
+  };
+
+  const removeRecurso = (id: string) => {
+    setTempRecursos(tempRecursos.filter(r => r.id !== id));
+  };
+
+  const confirmRecursos = () => {
+    const nuevasHorasPorRecurso: { [key: string]: number } = {};
+    tempRecursos.forEach(r => {
+      nuevasHorasPorRecurso[r.id] = r.horasAsignadas || 0;
+    });
+    
+    setFormData(prev => ({
+      ...prev,
+      recursosIds: tempRecursos.map(r => r.id),
+      recursos: tempRecursos.map(r => r.nombre),
+      horasPorRecurso: nuevasHorasPorRecurso
+    }));
+    setShowRecursosSelector(false);
   };
 
   const validateForm = () => {
@@ -123,6 +467,14 @@ const Fichas: React.FC = () => {
     if (!formData.cliente) newErrors.cliente = 'El cliente es obligatorio';
     if (!formData.lider) newErrors.lider = 'El líder es obligatorio';
     if (formData.venta <= 0) newErrors.venta = 'La venta debe ser mayor a 0';
+    
+    if (formData.recursosIds.length > 0) {
+      const totalHorasAsignadas = Object.values(formData.horasPorRecurso).reduce((sum, h) => sum + (h || 0), 0);
+      if (totalHorasAsignadas !== horasTotales) {
+        newErrors.horas = `La suma de horas asignadas (${totalHorasAsignadas} hrs) debe ser igual al total del proyecto (${horasTotales} hrs)`;
+      }
+    }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -134,12 +486,15 @@ const Fichas: React.FC = () => {
       nombreProyecto: '',
       cliente: '',
       lider: '',
+      liderId: '',
       descripcion: '',
       tecnologias: '',
       venta: 0,
       hhImplementacion: 0,
       hhPeriodo: 0,
       recursos: [],
+      recursosIds: [],
+      horasPorRecurso: {},
       fechaInicio: '',
       fechaTermino: '',
       contraparte: '',
@@ -150,24 +505,37 @@ const Fichas: React.FC = () => {
       alertas: '',
       acciones: '',
       responsable: '',
+      responsableId: '',
     });
+    setTempRecursos([]);
+    setErrors({});
+    setModalKey(prev => prev + 1);
     setShowModal(true);
+  };
+
+  const handleConvertToProject = (prospecto: any) => {
+    navigate('/solicitud-proyecto', { state: { convertFromProspecto: prospecto } });
   };
 
   const handleEdit = (ficha: Ficha) => {
     setModalMode('edit');
     setCurrentFicha(ficha);
+    const profLider = profesionales.find(p => p.nombre.toLowerCase() === (ficha.lider || '').toLowerCase());
+    const profResponsable = profesionales.find(p => p.nombre.toLowerCase() === (ficha.responsable || '').toLowerCase());
     setFormData({
       codigo: ficha.codigo,
       nombreProyecto: ficha.nombreProyecto,
       cliente: ficha.cliente,
       lider: ficha.lider,
+      liderId: profLider ? profLider.id : '',
       descripcion: ficha.descripcion,
       tecnologias: ficha.tecnologias,
       venta: ficha.venta,
       hhImplementacion: ficha.hhImplementacion,
       hhPeriodo: ficha.hhPeriodo,
       recursos: ficha.recursos,
+      recursosIds: ficha.recursosIds || [],
+      horasPorRecurso: ficha.horasPorRecurso || {},
       fechaInicio: ficha.fechaInicio,
       fechaTermino: ficha.fechaTermino,
       contraparte: ficha.contraparte,
@@ -178,7 +546,20 @@ const Fichas: React.FC = () => {
       alertas: ficha.alertas,
       acciones: ficha.acciones,
       responsable: ficha.responsable,
+      responsableId: profResponsable ? profResponsable.id : '',
     });
+    setTempRecursos((ficha.recursosIds || []).map(id => {
+      const prof = profesionales.find(p => p.id === id);
+      return prof ? { 
+        id: prof.id, 
+        nombre: prof.nombre, 
+        cargo: prof.cargo, 
+        horasDisponibles: prof.horasDisponibles,
+        horasAsignadas: (ficha.horasPorRecurso && ficha.horasPorRecurso[id]) || 0
+      } : null;
+    }).filter(p => p !== null) as { id: string; nombre: string; cargo: string; horasDisponibles?: number; horasAsignadas?: number }[]);
+    setErrors({});
+    setModalKey(prev => prev + 1);
     setShowModal(true);
   };
 
@@ -187,36 +568,103 @@ const Fichas: React.FC = () => {
     setShowDeleteConfirm(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (fichaToDelete) {
-      setFichas(prev => prev.filter(f => f.id !== fichaToDelete));
+      const fichaToDeleteObj = fichas.find(f => f.id === fichaToDelete);
+      if (fichaToDeleteObj) {
+        eliminarHorasDeProfesionales(fichaToDeleteObj);
+      }
+      
+      try {
+        const response = await api.delete(`/fichas/${fichaToDelete}`);
+        if (response.data.success) {
+          setFichas(prev => prev.filter(f => f.id !== fichaToDelete));
+          setFilteredFichas(prev => prev.filter(f => f.id !== fichaToDelete));
+        } else {
+          setError(response.data.message || 'Error al eliminar ficha');
+        }
+      } catch (err: any) {
+        console.error('Error eliminando ficha:', err);
+        setError(err.response?.data?.message || 'Error al eliminar ficha');
+      }
+      
       setShowDeleteConfirm(false);
       setFichaToDelete(null);
     }
   };
 
-  const handleSubmit = () => {
+  // ✅ CORREGIDO: Función handleSubmit completa
+  const handleSubmit = async () => {
     if (!validateForm()) return;
 
-    if (modalMode === 'add') {
-      const newFicha: Ficha = {
-        id: Date.now().toString(),
-        ...formData,
-        bitacora: []
-      };
-      setFichas(prev => [...prev, newFicha]);
-    } else {
-      if (currentFicha) {
-        setFichas(prev => prev.map(f => 
-          f.id === currentFicha.id 
-            ? { ...f, ...formData, bitacora: f.bitacora }
-            : f
-        ));
-      }
-    }
+    setSaving(true);
     
-    setShowModal(false);
-    setCurrentFicha(null);
+    // Preparar datos para enviar
+    const fichaData = {
+      ...formData,
+      horasPorRecurso: formData.horasPorRecurso || {},
+      bitacora: modalMode === 'add' ? [] : currentFicha?.bitacora || []
+    };
+
+    try {
+      let response;
+      if (modalMode === 'add') {
+        response = await api.post('/fichas', fichaData);
+        if (response.data.success) {
+          const newFicha = response.data.data;
+          setFichas(prev => [...prev, newFicha]);
+          setFilteredFichas(prev => [...prev, newFicha]);
+          
+          if (formData.recursosIds && formData.recursosIds.length > 0) {
+            await asignarHorasAProfesionales(newFicha);
+          }
+          
+          if (location.state?.convertFromSolicitud) {
+            console.log('✅ Ficha creada desde solicitud aprobada');
+          }
+        }
+      } else {
+        if (currentFicha) {
+          eliminarHorasDeProfesionales(currentFicha);
+          
+          response = await api.put(`/fichas/${currentFicha.id}`, fichaData);
+          if (response.data.success) {
+            const updatedFicha = response.data.data;
+            setFichas(prev => prev.map(f => 
+              f.id === currentFicha.id ? updatedFicha : f
+            ));
+            setFilteredFichas(prev => prev.map(f => 
+              f.id === currentFicha.id ? updatedFicha : f
+            ));
+            
+            if (formData.recursosIds && formData.recursosIds.length > 0) {
+              await asignarHorasAProfesionales(updatedFicha);
+            }
+          }
+        }
+      }
+      
+      if (response && response.data.success) {
+        setShowModal(false);
+        setCurrentFicha(null);
+        setErrors({});
+        setSaving(false);
+        
+        if (location.state?.convertFromSolicitud) {
+          window.history.replaceState({}, document.title);
+        }
+        
+        console.log('✅ Ficha guardada exitosamente');
+        
+      } else {
+        setError(response?.data?.message || 'Error al guardar ficha');
+        setSaving(false);
+      }
+    } catch (err: any) {
+      console.error('Error guardando ficha:', err);
+      setError(err.response?.data?.message || 'Error al guardar ficha');
+      setSaving(false);
+    }
   };
 
   const exportToExcel = () => {
@@ -230,13 +678,18 @@ const Fichas: React.FC = () => {
       'Venta ($)': f.venta,
       'HH Implementación': f.hhImplementacion,
       'HH Periodo': f.hhPeriodo,
+      'HH Planificadas': f.hhPlanificadas,
+      'HH Total': f.hhImplementacion + f.hhPeriodo + f.hhPlanificadas,
       'Recursos': f.recursos.join(', '),
+      'Horas por Recurso': Object.entries(f.horasPorRecurso || {}).map(([id, horas]) => {
+        const prof = profesionales.find(p => p.id === id);
+        return `${prof?.nombre || id}: ${horas}h`;
+      }).join('; '),
       'Fecha Inicio': f.fechaInicio,
       'Fecha Término': f.fechaTermino,
       'Contraparte': f.contraparte,
       'Estado': f.estado,
       'Avance %': f.avance,
-      'HH Planificadas': f.hhPlanificadas,
       'HH Real': f.hhReal,
       'Alertas': f.alertas || '',
       'Acciones': f.acciones || '',
@@ -245,117 +698,6 @@ const Fichas: React.FC = () => {
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(dataToExport);
-
-    const colWidths = [
-      { wch: 15 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 60 },
-      { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 40 },
-      { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 10 },
-      { wch: 15 }, { wch: 12 }, { wch: 35 }, { wch: 35 }, { wch: 20 },
-    ];
-    ws['!cols'] = colWidths;
-
-    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:T1');
-
-    for (let C = range.s.c; C <= range.e.c; ++C) {
-      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: C });
-      if (!ws[cellAddress]) continue;
-      
-      ws[cellAddress].s = {
-        font: { bold: true, color: { rgb: "FFFFFF" }, sz: 12, name: "Arial" },
-        fill: { fgColor: { rgb: "1E3A5F" } },
-        alignment: { horizontal: "center", vertical: "center" },
-        border: {
-          top: { style: "medium", color: { rgb: "000000" } },
-          bottom: { style: "medium", color: { rgb: "000000" } },
-          left: { style: "medium", color: { rgb: "000000" } },
-          right: { style: "medium", color: { rgb: "000000" } }
-        }
-      };
-    }
-
-    for (let R = 1; R <= range.e.r; ++R) {
-      for (let C = range.s.c; C <= range.e.c; ++C) {
-        const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-        if (!ws[cellAddress]) continue;
-        
-        let horizontalAlign: 'left' | 'center' | 'right' = "left";
-        
-        if (C === 6 || C === 7 || C === 8 || C === 14 || C === 15 || C === 16) {
-          horizontalAlign = "right";
-        }
-        
-        if (C === 13 || C === 14) {
-          horizontalAlign = "center";
-        }
-
-        if (C === 6) {
-          ws[cellAddress].z = '"$"#,##0.00';
-        }
-
-        let bgColor = "FFFFFF";
-        let fontColor = "000000";
-        let fontWeight = false;
-
-        if (C === 13) {
-          const estado = ws[cellAddress].v;
-          if (estado === 'En Curso') {
-            bgColor = "C6EFCE";
-            fontColor = "006100";
-            fontWeight = true;
-          } else if (estado === 'Standby') {
-            bgColor = "FFEB9C";
-            fontColor = "9C6500";
-            fontWeight = true;
-          } else if (estado === 'Completada') {
-            bgColor = "DDEBF7";
-            fontColor = "1E3A5F";
-            fontWeight = true;
-          } else if (estado === 'No Iniciada') {
-            bgColor = "F2F2F2";
-            fontColor = "333333";
-            fontWeight = true;
-          }
-        }
-
-        if (C === 14) {
-          const avance = parseInt(ws[cellAddress].v);
-          if (avance === 100) {
-            bgColor = "C6EFCE";
-            fontColor = "006100";
-          } else if (avance >= 75) {
-            bgColor = "FFEB9C";
-            fontColor = "9C6500";
-          } else if (avance >= 50) {
-            bgColor = "FFC7CE";
-            fontColor = "9C0006";
-          }
-        }
-
-        if (C === 17 && ws[cellAddress].v && ws[cellAddress].v !== '') {
-          bgColor = "FFC7CE";
-          fontColor = "9C0006";
-          fontWeight = true;
-        }
-
-        if (C === 6) {
-          fontColor = "006100";
-          fontWeight = true;
-        }
-
-        ws[cellAddress].s = {
-          font: { color: { rgb: fontColor }, bold: fontWeight, sz: 11, name: "Arial" },
-          fill: { fgColor: { rgb: bgColor } },
-          alignment: { horizontal: horizontalAlign, vertical: "center" },
-          border: {
-            top: { style: "thin", color: { rgb: "000000" } },
-            bottom: { style: "thin", color: { rgb: "000000" } },
-            left: { style: "thin", color: { rgb: "000000" } },
-            right: { style: "thin", color: { rgb: "000000" } }
-          }
-        };
-      }
-    }
-
     XLSX.utils.book_append_sheet(wb, ws, 'Fichas');
     const fecha = new Date();
     const fechaStr = `${fecha.getFullYear()}-${(fecha.getMonth()+1).toString().padStart(2,'0')}-${fecha.getDate().toString().padStart(2,'0')}`;
@@ -372,17 +714,28 @@ const Fichas: React.FC = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Cargando fichas...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const profesionalesActivos = profesionales.filter(p => p.activo === true);
+  const totalHorasAsignadas = Object.values(formData.horasPorRecurso).reduce((sum, h) => sum + (h || 0), 0);
+  const horasFaltantes = horasTotales - totalHorasAsignadas;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-      {/* Navbar Responsive */}
       <nav className="bg-white shadow-lg border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between py-3 sm:py-0 sm:h-16">
             <div className="flex items-center w-full sm:w-auto">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="flex items-center text-gray-600 hover:text-indigo-600 mr-2 sm:mr-4 text-xs sm:text-sm"
-              >
+              <button onClick={() => navigate('/dashboard')} className="flex items-center text-gray-600 hover:text-indigo-600 mr-2 sm:mr-4 text-xs sm:text-sm">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
@@ -394,456 +747,655 @@ const Fichas: React.FC = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <span className="ml-2 text-base sm:text-lg md:text-xl font-semibold text-gray-800 truncate">
-                  Gestión Fichas
-                </span>
+                <span className="ml-2 text-base sm:text-lg md:text-xl font-semibold text-gray-800 truncate">Gestión Fichas</span>
               </div>
+            </div>
+            <div className="flex items-center gap-2 mt-2 sm:mt-0">
+              <button
+                onClick={loadFichas}
+                className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center px-2 sm:px-3 py-1 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <svg className="w-3 h-3 sm:w-4 sm:h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Actualizar
+              </button>
             </div>
           </div>
         </div>
       </nav>
 
-      {/* Barra de herramientas */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={handleAdd}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm font-medium rounded-md border border-green-700"
+      {error && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-600 text-sm">{error}</p>
+            <button 
+              onClick={() => setError(null)}
+              className="mt-1 text-red-600 hover:text-red-800 text-sm font-medium"
             >
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              <span className="hidden xs:inline">Nuevo</span>
-              <span className="xs:hidden">+</span>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex space-x-8">
+            <button
+              onClick={() => setActiveTab('proyectos')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-all ${
+                activeTab === 'proyectos'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Fichas de Proyectos
             </button>
             <button
-              onClick={exportToExcel}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 py-1.5 bg-green-700 hover:bg-green-800 text-white text-xs sm:text-sm font-medium rounded-md border border-green-800"
+              onClick={() => setActiveTab('prospectos')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-all ${
+                activeTab === 'prospectos'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
             >
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              <span className="hidden xs:inline">Excel</span>
-              <span className="xs:hidden">📊</span>
+              Prospectos de Proyectos
             </button>
           </div>
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
-        {/* Filtros */}
-        <div className="mb-4 sm:mb-6 bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm">
-          <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-3">
-            <div className="relative">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Buscar</label>
-              <input
-                type="text"
-                placeholder="Buscar..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-2 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-purple-500"
-              />
-              <svg className="absolute left-2 top-7 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Estado</label>
-              <select
-                value={selectedEstado}
-                onChange={(e) => setSelectedEstado(e.target.value)}
-                className="w-full px-2 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-purple-500"
-              >
-                <option value="todos">Todos</option>
-                <option value="En Curso">Curso</option>
-                <option value="Standby">Standby</option>
-                <option value="No Iniciada">No Ini</option>
-                <option value="Completada">Compl</option>
-              </select>
-            </div>
-            <div className="xs:col-span-2 md:col-span-1">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Registros</label>
-              <div className="bg-gray-100 px-3 py-1.5 rounded border border-gray-300 text-xs sm:text-sm">
-                {filteredFichas.length} fichas
+      {activeTab === 'prospectos' ? (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <FichasProspecto onConvertToProject={handleConvertToProject} />
+        </div>
+      ) : (
+        <>
+          <div className="bg-white border-b border-gray-200 shadow-sm">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+              <div className="flex flex-wrap gap-2">
+                <button onClick={handleAdd} className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm font-medium rounded-md border border-green-700">
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  <span className="hidden xs:inline">Nuevo</span>
+                  <span className="xs:hidden">+</span>
+                </button>
+                <button onClick={exportToExcel} className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 py-1.5 bg-green-700 hover:bg-green-800 text-white text-xs sm:text-sm font-medium rounded-md border border-green-800">
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span className="hidden xs:inline">Excel</span>
+                  <span className="xs:hidden">📊</span>
+                </button>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Tabla */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-xs sm:text-sm">
-              <thead className="bg-gradient-to-r from-purple-600 to-pink-600">
-                <tr>
-                  <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">
-                    Código
-                  </th>
-                  <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider hidden xs:table-cell">
-                    Proyecto
-                  </th>
-                  <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider hidden sm:table-cell">
-                    Cliente
-                  </th>
-                  <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">
-                    Venta
-                  </th>
-                  <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider hidden lg:table-cell">
-                    Estado
-                  </th>
-                  <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">
-                    Avance
-                  </th>
-                  <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredFichas.length > 0 ? (
-                  filteredFichas.map((ficha, index) => (
-                    <tr key={ficha.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-purple-50`}>
-                      <td className="px-2 sm:px-3 py-2 font-medium">{ficha.codigo}</td>
-                      <td className="px-2 sm:px-3 py-2 truncate max-w-[100px] xs:max-w-none hidden xs:table-cell">
-                        {ficha.nombreProyecto}
-                      </td>
-                      <td className="px-2 sm:px-3 py-2 hidden sm:table-cell">{ficha.cliente}</td>
-                      <td className="px-2 sm:px-3 py-2 text-green-600 font-bold">
-                        ${ficha.venta.toLocaleString()}
-                      </td>
-                      <td className="px-2 sm:px-3 py-2 hidden lg:table-cell">
-                        <span className={`px-1.5 py-0.5 rounded text-white text-xs font-bold ${getEstadoColor(ficha.estado)}`}>
-                          {ficha.estado}
-                        </span>
-                      </td>
-                      <td className="px-2 sm:px-3 py-2">
-                        <div className="flex items-center gap-1">
-                          <div className="w-12 sm:w-16 h-1.5 bg-gray-200 rounded-full">
-                            <div className="bg-purple-600 h-1.5 rounded-full" style={{ width: `${ficha.avance}%` }}></div>
-                          </div>
-                          <span className="text-xs">{ficha.avance}%</span>
-                        </div>
-                      </td>
-                      <td className="px-2 sm:px-3 py-2">
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => handleEdit(ficha)} className="text-purple-600 hover:text-purple-800 p-1" title="Editar">
-                            ✏️
-                          </button>
-                          <button onClick={() => handleDelete(ficha.id)} className="text-red-600 hover:text-red-800 p-1" title="Eliminar">
-                            🗑️
-                          </button>
-                        </div>
-                      </td>
+          <main className="max-w-7xl mx-auto py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
+            <div className="mb-4 sm:mb-6 bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm">
+              <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="relative">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Buscar</label>
+                  <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-8 pr-2 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-purple-500" />
+                  <svg className="absolute left-2 top-7 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Estado</label>
+                  <select value={selectedEstado} onChange={(e) => setSelectedEstado(e.target.value)} className="w-full px-2 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-purple-500">
+                    <option value="todos">Todos</option>
+                    <option value="En Curso">Curso</option>
+                    <option value="Standby">Standby</option>
+                    <option value="No Iniciada">No Ini</option>
+                    <option value="Completada">Compl</option>
+                  </select>
+                </div>
+                <div className="xs:col-span-2 md:col-span-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Registros</label>
+                  <div className="bg-gray-100 px-3 py-1.5 rounded border border-gray-300 text-xs sm:text-sm">{filteredFichas.length} fichas</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg border border-gray-200 shadow-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-xs sm:text-sm">
+                  <thead className="bg-gradient-to-r from-purple-600 to-pink-600">
+                    <tr>
+                      <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">Código</th>
+                      <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider hidden xs:table-cell">Proyecto</th>
+                      <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider hidden sm:table-cell">Cliente</th>
+                      <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">HH Total</th>
+                      <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider hidden lg:table-cell">Recursos</th>
+                      <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">Estado</th>
+                      <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">Avance</th>
+                      <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">Acciones</th>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-gray-400">
-                      No hay fichas
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          
-          <div className="bg-gray-100 px-4 py-2 border-t border-gray-200 text-xs">
-            <span>📊 {filteredFichas.length} registros</span>
-          </div>
-        </div>
-      </main>
-
-      {/* Modal de Ficha */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 sm:px-6 py-3 rounded-t-lg flex justify-between items-center">
-              <h3 className="text-base sm:text-lg font-semibold">
-                {modalMode === 'add' ? '➕ Nueva Ficha' : '✏️ Editar Ficha'}
-              </h3>
-              <button onClick={() => setShowModal(false)} className="text-white hover:text-gray-300 text-xl">✕</button>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredFichas.length > 0 ? (
+                      filteredFichas.map((ficha, index) => (
+                        <tr key={ficha.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-purple-50`}>
+                          <td className="px-2 sm:px-3 py-2 font-medium">{ficha.codigo}</td>
+                          <td className="px-2 sm:px-3 py-2 truncate max-w-[100px] xs:max-w-none hidden xs:table-cell">{ficha.nombreProyecto}</td>
+                          <td className="px-2 sm:px-3 py-2 hidden sm:table-cell">{ficha.cliente}</td>
+                          <td className="px-2 sm:px-3 py-2 text-purple-600 font-bold">{ficha.hhImplementacion + ficha.hhPeriodo + ficha.hhPlanificadas} hrs</td>
+                          <td className="px-2 sm:px-3 py-2 hidden lg:table-cell">
+                            <div className="text-xs">
+                              {ficha.recursos.slice(0, 2).join(', ')}
+                              {ficha.recursos.length > 2 && ` +${ficha.recursos.length - 2}`}
+                            </div>
+                          </td>
+                          <td className="px-2 sm:px-3 py-2">
+                            <span className={`px-1.5 py-0.5 rounded text-white text-xs font-bold ${getEstadoColor(ficha.estado)}`}>
+                              {ficha.estado}
+                            </span>
+                          </td>
+                          <td className="px-2 sm:px-3 py-2">
+                            <div className="flex items-center gap-1">
+                              <div className="w-12 sm:w-16 h-1.5 bg-gray-200 rounded-full">
+                                <div className="bg-purple-600 h-1.5 rounded-full" style={{ width: `${ficha.avance}%` }}></div>
+                              </div>
+                              <span className="text-xs">{ficha.avance}%</span>
+                            </div>
+                          </td>
+                          <td className="px-2 sm:px-3 py-2">
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => handleEdit(ficha)} className="text-purple-600 hover:text-purple-800 p-1" title="Editar">✏️</button>
+                              <button onClick={() => handleDelete(ficha.id)} className="text-red-600 hover:text-red-800 p-1" title="Eliminar">🗑️</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-6 text-center text-gray-400">No hay fichas</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="bg-gray-100 px-4 py-2 border-t border-gray-200 text-xs"><span>📊 {filteredFichas.length} registros</span></div>
             </div>
-            
-            <div className="p-4 sm:p-6">
-              <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                  {/* Columna izquierda */}
-                  <div className="space-y-3 sm:space-y-4">
-                    <div>
-                      <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📁 Nombre del Proyecto *</label>
-                      <input
-                        type="text"
-                        name="nombreProyecto"
-                        value={formData.nombreProyecto}
-                        onChange={handleInputChange}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        required
-                      />
-                      {errors.nombreProyecto && <p className="text-red-500 text-xs mt-1">{errors.nombreProyecto}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">🏢 Cliente *</label>
-                      <input
-                        type="text"
-                        name="cliente"
-                        value={formData.cliente}
-                        onChange={handleInputChange}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        required
-                      />
-                      {errors.cliente && <p className="text-red-500 text-xs mt-1">{errors.cliente}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">👤 Líder *</label>
-                      <input
-                        type="text"
-                        name="lider"
-                        value={formData.lider}
-                        onChange={handleInputChange}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        required
-                      />
-                      {errors.lider && <p className="text-red-500 text-xs mt-1">{errors.lider}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📝 Descripción</label>
-                      <textarea
-                        name="descripcion"
-                        value={formData.descripcion}
-                        onChange={handleInputChange}
-                        rows={3}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">💻 Tecnologías</label>
-                      <input
-                        type="text"
-                        name="tecnologias"
-                        value={formData.tecnologias}
-                        onChange={handleInputChange}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        placeholder="Ej: Python, JavaScript"
-                      />
-                    </div>
-                  </div>
+          </main>
 
-                  {/* Columna derecha */}
-                  <div className="space-y-3 sm:space-y-4">
-                    <div>
-                      <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">💰 Venta ($) *</label>
-                      <input
-                        type="number"
-                        name="venta"
-                        value={formData.venta}
-                        onChange={handleInputChange}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        required
-                      />
-                      {errors.venta && <p className="text-red-500 text-xs mt-1">{errors.venta}</p>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                      <div>
-                        <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">⏱️ HH Imp</label>
-                        <input
-                          type="number"
-                          name="hhImplementacion"
-                          value={formData.hhImplementacion}
-                          onChange={handleInputChange}
-                          className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">⏱️ HH Per</label>
-                        <input
-                          type="number"
-                          name="hhPeriodo"
-                          value={formData.hhPeriodo}
-                          onChange={handleInputChange}
-                          className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">👥 Recursos</label>
-                      <input
-                        type="text"
-                        name="recursos"
-                        value={formData.recursos.join(', ')}
-                        onChange={handleRecursosChange}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        placeholder="Ej: Juan, María, Carlos"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                      <div>
-                        <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📅 Inicio</label>
-                        <input
-                          type="date"
-                          name="fechaInicio"
-                          value={formData.fechaInicio}
-                          onChange={handleInputChange}
-                          className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📅 Término</label>
-                        <input
-                          type="date"
-                          name="fechaTermino"
-                          value={formData.fechaTermino}
-                          onChange={handleInputChange}
-                          className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">🤝 Contraparte</label>
-                      <input
-                        type="text"
-                        name="contraparte"
-                        value={formData.contraparte}
-                        onChange={handleInputChange}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        placeholder="Cliente interno/externo"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                      <div>
-                        <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">⚡ Estado</label>
-                        <select
-                          name="estado"
-                          value={formData.estado}
-                          onChange={handleInputChange}
-                          className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        >
-                          <option value="No Iniciada">No Iniciada</option>
-                          <option value="En Curso">En Curso</option>
-                          <option value="Standby">Standby</option>
-                          <option value="Completada">Completada</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📊 % Avance</label>
-                        <input
-                          type="number"
-                          name="avance"
-                          value={formData.avance}
-                          onChange={handleInputChange}
-                          min="0"
-                          max="100"
-                          className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                      <div>
-                        <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📋 HH Plan</label>
-                        <input
-                          type="number"
-                          name="hhPlanificadas"
-                          value={formData.hhPlanificadas}
-                          onChange={handleInputChange}
-                          className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">✅ HH Real</label>
-                        <input
-                          type="number"
-                          name="hhReal"
-                          value={formData.hhReal}
-                          onChange={handleInputChange}
-                          className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">⚠️ Alertas</label>
-                      <textarea
-                        name="alertas"
-                        value={formData.alertas}
-                        onChange={handleInputChange}
-                        rows={2}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        placeholder="Alertas detectadas..."
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">🔧 Acciones</label>
-                      <textarea
-                        name="acciones"
-                        value={formData.acciones}
-                        onChange={handleInputChange}
-                        rows={2}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        placeholder="Acciones tomadas..."
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">👤 Responsable</label>
-                      <input
-                        type="text"
-                        name="responsable"
-                        value={formData.responsable}
-                        onChange={handleInputChange}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
-                        placeholder="Responsable"
-                      />
-                    </div>
+          {/* ✅ MODAL CORREGIDO CON KEY PARA FORZAR RECREACIÓN */}
+          {showModal && (
+            <div key={modalKey} className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 sm:px-6 py-3 rounded-t-lg flex justify-between items-center sticky top-0 z-10">
+                  <h3 className="text-base sm:text-lg font-semibold">
+                    {modalMode === 'add' 
+                      ? (location.state?.convertFromSolicitud ? '📝 Convertir Solicitud a Ficha' : '➕ Nueva Ficha')
+                      : '✏️ Editar Ficha'
+                    }
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    {/* ✅ Botón de emergencia para forzar habilitación */}
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        console.log('🔓 Forzando habilitación de edición');
+                        setFormData(prev => ({ ...prev }));
+                        setErrors({});
+                        setModalKey(prev => prev + 1);
+                      }}
+                      className="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded"
+                    >
+                      🔓 Habilitar
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setShowModal(false);
+                        if (location.state?.convertFromSolicitud) {
+                          window.history.replaceState({}, document.title);
+                        }
+                      }} 
+                      className="text-white hover:text-gray-300 text-xl"
+                    >
+                      ✕
+                    </button>
                   </div>
                 </div>
+                <div className="p-4 sm:p-6">
+                  <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                      <div className="space-y-3 sm:space-y-4">
+                        {/* Nombre del Proyecto - EDITABLE */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📁 Nombre del Proyecto *</label>
+                          <input 
+                            type="text" 
+                            name="nombreProyecto" 
+                            value={formData.nombreProyecto || ''} 
+                            onChange={handleInputChange} 
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            required 
+                            autoFocus
+                          />
+                          {errors.nombreProyecto && <p className="text-red-500 text-xs mt-1">{errors.nombreProyecto}</p>}
+                        </div>
 
-                <div className="mt-4 sm:mt-6 flex justify-end space-x-2 sm:space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border-2 border-gray-300 rounded text-gray-700 hover:bg-gray-100 font-bold"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-purple-600 text-white rounded hover:bg-purple-700 font-bold"
-                  >
-                    {modalMode === 'add' ? 'Crear' : 'Guardar'}
-                  </button>
+                        {/* Cliente - EDITABLE */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">🏢 Cliente *</label>
+                          <input 
+                            type="text" 
+                            name="cliente" 
+                            value={formData.cliente || ''} 
+                            onChange={handleInputChange} 
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            required 
+                          />
+                          {errors.cliente && <p className="text-red-500 text-xs mt-1">{errors.cliente}</p>}
+                        </div>
+
+                        {/* Líder - Select editable */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">👤 Líder *</label>
+                          <select 
+                            name="lider" 
+                            value={formData.liderId || ''} 
+                            onChange={handleInputChange} 
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            required
+                          >
+                            <option value="">Seleccionar líder...</option>
+                            {profesionalesActivos.map(prof => (
+                              <option key={prof.id} value={prof.id}>
+                                {prof.nombre} - {prof.cargo}
+                              </option>
+                            ))}
+                          </select>
+                          {errors.lider && <p className="text-red-500 text-xs mt-1">{errors.lider}</p>}
+                        </div>
+
+                        {/* Descripción - EDITABLE */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📝 Descripción</label>
+                          <textarea 
+                            name="descripcion" 
+                            value={formData.descripcion || ''} 
+                            onChange={handleInputChange} 
+                            rows={3} 
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                          />
+                        </div>
+
+                        {/* Tecnologías - EDITABLE */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">💻 Tecnologías</label>
+                          <input 
+                            type="text" 
+                            name="tecnologias" 
+                            value={formData.tecnologias || ''} 
+                            onChange={handleInputChange} 
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            placeholder="Ej: Python, JavaScript" 
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 sm:space-y-4">
+                        {/* Venta - EDITABLE */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">💰 Venta ($) *</label>
+                          <input 
+                            type="number" 
+                            name="venta" 
+                            value={formData.venta || 0} 
+                            onChange={handleInputChange} 
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            required 
+                          />
+                          {errors.venta && <p className="text-red-500 text-xs mt-1">{errors.venta}</p>}
+                        </div>
+
+                        {/* HH - EDITABLE */}
+                        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                          <div>
+                            <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">⏱️ HH Implementación</label>
+                            <input 
+                              type="number" 
+                              name="hhImplementacion" 
+                              value={formData.hhImplementacion || 0} 
+                              onChange={handleInputChange} 
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">⏱️ HH Periodo</label>
+                            <input 
+                              type="number" 
+                              name="hhPeriodo" 
+                              value={formData.hhPeriodo || 0} 
+                              onChange={handleInputChange} 
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📋 HH Plan</label>
+                            <input 
+                              type="number" 
+                              name="hhPlanificadas" 
+                              value={formData.hhPlanificadas || 0} 
+                              onChange={handleInputChange} 
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            />
+                          </div>
+                        </div>
+
+                        {/* Recursos - EDITABLE */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">👥 Recursos</label>
+                          <div className="flex gap-2">
+                            <button 
+                              type="button" 
+                              onClick={openRecursosSelector} 
+                              className="flex-1 px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
+                            >
+                              Seleccionar Recursos y Asignar Horas
+                            </button>
+                          </div>
+                          {formData.recursos.length > 0 && (
+                            <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-200">
+                              <p className="text-xs font-semibold text-gray-700 mb-1">Recursos seleccionados:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {formData.recursosIds.map((recursoId, idx) => {
+                                  const recurso = profesionales.find(p => p.id === recursoId);
+                                  const horas = formData.horasPorRecurso[recursoId] || 0;
+                                  return (
+                                    <div key={idx} className="inline-flex items-center px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">
+                                      {recurso?.nombre}: {horas} hrs
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className="mt-2 pt-2 border-t border-gray-200 bg-blue-50 p-2 rounded">
+                                <p className="text-sm font-semibold text-gray-800 mb-1">📊 Distribución de Horas:</p>
+                                <p className="text-xs text-gray-700">
+                                  <span className="font-semibold">Total HH del proyecto:</span> {horasTotales} hrs
+                                </p>
+                                <p className="text-xs text-gray-700">
+                                  <span className="font-semibold">Total HH asignadas:</span> {totalHorasAsignadas} hrs
+                                </p>
+                                {horasFaltantes !== 0 && (
+                                  <p className={`text-xs font-semibold ${horasFaltantes > 0 ? 'text-red-600' : 'text-orange-600'}`}>
+                                    {horasFaltantes > 0 ? `Faltan asignar: ${horasFaltantes} hrs` : `Sobreasignadas: ${Math.abs(horasFaltantes)} hrs`}
+                                  </p>
+                                )}
+                                {errors.horas && <p className="text-red-500 text-xs mt-1">{errors.horas}</p>}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Fechas - EDITABLE */}
+                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                          <div>
+                            <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📅 Inicio</label>
+                            <input 
+                              type="date" 
+                              name="fechaInicio" 
+                              value={formData.fechaInicio || ''} 
+                              onChange={handleInputChange} 
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📅 Término</label>
+                            <input 
+                              type="date" 
+                              name="fechaTermino" 
+                              value={formData.fechaTermino || ''} 
+                              onChange={handleInputChange} 
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            />
+                          </div>
+                        </div>
+
+                        {/* Contraparte - EDITABLE */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">🤝 Contraparte</label>
+                          <input 
+                            type="text" 
+                            name="contraparte" 
+                            value={formData.contraparte || ''} 
+                            onChange={handleInputChange} 
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            placeholder="Cliente interno/externo" 
+                          />
+                        </div>
+
+                        {/* Estado y Avance - EDITABLE */}
+                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                          <div>
+                            <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">⚡ Estado</label>
+                            <select 
+                              name="estado" 
+                              value={formData.estado || 'No Iniciada'} 
+                              onChange={handleInputChange} 
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
+                            >
+                              <option value="No Iniciada">No Iniciada</option>
+                              <option value="En Curso">En Curso</option>
+                              <option value="Standby">Standby</option>
+                              <option value="Completada">Completada</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📊 % Avance</label>
+                            <input 
+                              type="number" 
+                              name="avance" 
+                              value={formData.avance || 0} 
+                              onChange={handleInputChange} 
+                              min="0" 
+                              max="100" 
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            />
+                          </div>
+                        </div>
+
+                        {/* HH Real - EDITABLE */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">✅ HH Real</label>
+                          <input 
+                            type="number" 
+                            name="hhReal" 
+                            value={formData.hhReal || 0} 
+                            onChange={handleInputChange} 
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                          />
+                        </div>
+
+                        {/* Alertas - EDITABLE */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">⚠️ Alertas</label>
+                          <textarea 
+                            name="alertas" 
+                            value={formData.alertas || ''} 
+                            onChange={handleInputChange} 
+                            rows={2} 
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            placeholder="Alertas detectadas..." 
+                          />
+                        </div>
+
+                        {/* Acciones - EDITABLE */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">🔧 Acciones</label>
+                          <textarea 
+                            name="acciones" 
+                            value={formData.acciones || ''} 
+                            onChange={handleInputChange} 
+                            rows={2} 
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
+                            placeholder="Acciones tomadas..." 
+                          />
+                        </div>
+
+                        {/* Responsable - Select editable */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">👤 Responsable</label>
+                          <select 
+                            name="responsable" 
+                            value={formData.responsableId || ''} 
+                            onChange={handleInputChange} 
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none"
+                          >
+                            <option value="">Seleccionar responsable...</option>
+                            {profesionalesActivos.map(prof => (
+                              <option key={prof.id} value={prof.id}>
+                                {prof.nombre} - {prof.cargo}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Botones */}
+                    <div className="mt-4 sm:mt-6 flex justify-end space-x-2 sm:space-x-3 pt-4 border-t border-gray-200">
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setShowModal(false);
+                          if (location.state?.convertFromSolicitud) {
+                            window.history.replaceState({}, document.title);
+                          }
+                        }} 
+                        className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border-2 border-gray-300 rounded text-gray-700 hover:bg-gray-100 font-bold"
+                      >
+                        Cancelar
+                      </button>
+                      <button 
+                        type="submit" 
+                        disabled={saving} 
+                        className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-purple-600 text-white rounded hover:bg-purple-700 font-bold disabled:opacity-50"
+                      >
+                        {saving ? 'Guardando...' : (modalMode === 'add' ? 'Crear Ficha' : 'Guardar Cambios')}
+                      </button>
+                    </div>
+                  </form>
                 </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de confirmación */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full">
-            <div className="bg-gradient-to-r from-red-600 to-pink-600 text-white px-4 sm:px-6 py-3 rounded-t-lg">
-              <h3 className="text-base sm:text-lg font-semibold">🗑️ Confirmar eliminación</h3>
-            </div>
-            <div className="p-4 sm:p-6">
-              <p className="text-sm sm:text-base text-gray-700 mb-4 sm:mb-6">
-                ¿Estás seguro de que deseas eliminar esta ficha?
-              </p>
-              <div className="flex justify-end space-x-2 sm:space-x-3">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border-2 border-gray-300 rounded text-gray-700 hover:bg-gray-100 font-bold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmDelete}
-                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-red-600 text-white rounded hover:bg-red-700 font-bold"
-                >
-                  Eliminar
-                </button>
               </div>
             </div>
-          </div>
-        </div>
+          )}
+
+          {/* Modal para seleccionar recursos */}
+          {showRecursosSelector && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 sm:px-6 py-3 rounded-t-lg flex justify-between items-center sticky top-0 z-10">
+                  <h3 className="text-base sm:text-lg font-semibold">👥 Seleccionar Recursos y Asignar Horas</h3>
+                  <button onClick={() => setShowRecursosSelector(false)} className="text-white hover:text-gray-300 text-xl">✕</button>
+                </div>
+                <div className="p-4 sm:p-6">
+                  <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-gray-700">
+                      <span className="font-semibold">Total horas del proyecto:</span> {horasTotales} hrs
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Asigna las horas individualmente para cada profesional. La suma debe ser igual al total del proyecto.
+                    </p>
+                    <p className="text-xs text-purple-600 mt-1 font-semibold">
+                      Total asignado: {totalHorasAsignadas} hrs | Faltante: {horasFaltantes} hrs
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="font-bold text-gray-700 mb-2 text-sm">Profesionales disponibles</h4>
+                      <div className="border border-gray-200 rounded-lg h-96 overflow-y-auto">
+                        {profesionalesActivos.filter(p => !tempRecursos.some(r => r.id === p.id)).map(prof => {
+                          const horasDisponibles = getHorasDisponibles(prof);
+                          return (
+                            <div key={prof.id} onClick={() => addRecurso(prof)} className="p-3 hover:bg-purple-50 cursor-pointer border-b border-gray-100">
+                              <div className="font-medium text-sm">{prof.nombre}</div>
+                              <div className="text-xs text-gray-500">{prof.cargo}</div>
+                              <div className="text-xs text-green-600">Horas disponibles: {horasDisponibles} hrs</div>
+                            </div>
+                          );
+                        })}
+                        {profesionalesActivos.filter(p => !tempRecursos.some(r => r.id === p.id)).length === 0 && (
+                          <div className="p-4 text-center text-gray-400 text-sm">No hay más profesionales disponibles</div>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-gray-700 mb-2 text-sm">Recursos seleccionados</h4>
+                      <div className="border border-gray-200 rounded-lg h-96 overflow-y-auto">
+                        {tempRecursos.map(recurso => {
+                          const horasDisponibles = recurso.horasDisponibles !== undefined ? recurso.horasDisponibles : 160;
+                          return (
+                            <div key={recurso.id} className="p-3 bg-purple-50 border-b border-gray-200">
+                              <div className="flex justify-between items-start mb-2">
+                                <div>
+                                  <div className="font-medium text-sm">{recurso.nombre}</div>
+                                  <div className="text-xs text-gray-500">{recurso.cargo}</div>
+                                  <div className="text-xs text-green-600">Disponibles: {horasDisponibles} hrs</div>
+                                </div>
+                                <button type="button" onClick={() => removeRecurso(recurso.id)} className="text-red-500 hover:text-red-700 text-sm">Eliminar</button>
+                              </div>
+                              <div className="mt-2">
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Horas asignadas:</label>
+                                <input
+                                  type="number"
+                                  value={recurso.horasAsignadas || 0}
+                                  onChange={(e) => {
+                                    const nuevasHoras = parseInt(e.target.value) || 0;
+                                    const updatedRecursos = tempRecursos.map(r =>
+                                      r.id === recurso.id ? { ...r, horasAsignadas: nuevasHoras } : r
+                                    );
+                                    setTempRecursos(updatedRecursos);
+                                    handleHorasPorRecursoChange(recurso.id, nuevasHoras);
+                                  }}
+                                  min="0"
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:border-purple-500 outline-none"
+                                />
+                                {recurso.horasAsignadas && recurso.horasAsignadas > horasDisponibles && (
+                                  <p className="text-xs text-red-500 mt-1">⚠️ Excede las horas disponibles ({horasDisponibles} hrs)</p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {tempRecursos.length === 0 && (
+                          <div className="p-4 text-center text-gray-400 text-sm">No hay recursos seleccionados</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end space-x-2">
+                    <button type="button" onClick={() => setShowRecursosSelector(false)} className="px-3 py-1.5 text-sm border-2 border-gray-300 rounded text-gray-700 hover:bg-gray-100">Cancelar</button>
+                    <button type="button" onClick={confirmRecursos} className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700">Confirmar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal de confirmación */}
+          {showDeleteConfirm && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg max-w-md w-full">
+                <div className="bg-gradient-to-r from-red-600 to-pink-600 text-white px-4 sm:px-6 py-3 rounded-t-lg">
+                  <h3 className="text-base sm:text-lg font-semibold">🗑️ Confirmar eliminación</h3>
+                </div>
+                <div className="p-4 sm:p-6">
+                  <p className="text-sm sm:text-base text-gray-700 mb-4 sm:mb-6">¿Estás seguro de que deseas eliminar esta ficha? Esto también liberará las horas asignadas a los profesionales.</p>
+                  <div className="flex justify-end space-x-2 sm:space-x-3">
+                    <button onClick={() => setShowDeleteConfirm(false)} className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border-2 border-gray-300 rounded text-gray-700 hover:bg-gray-100 font-bold">Cancelar</button>
+                    <button onClick={confirmDelete} className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-red-600 text-white rounded hover:bg-red-700 font-bold">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

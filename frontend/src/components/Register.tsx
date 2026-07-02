@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import authService from '../services/authService';
 
 interface RegisterProps {
   onSwitchToLogin: () => void;
 }
 
 const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
-  const { register, isLoading } = useAuth();
+  const { register, isLoading: authLoading, isAuthenticated } = useAuth();
   
   const [formData, setFormData] = useState({
     nombre: '',
@@ -21,12 +22,22 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Verificar si ya hay sesión al montar el componente
+  useEffect(() => {
+    if (isAuthenticated) {
+      onSwitchToLogin();
+    }
+  }, [isAuthenticated, onSwitchToLogin]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
     });
+    // Limpiar errores al escribir
+    if (error) setError('');
   };
 
   const validateEmailFormat = (email: string) => {
@@ -37,6 +48,17 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
   const validateUsername = (username: string) => {
     const usernameRegex = /^[a-zA-Z0-9._]{3,20}$/;
     return usernameRegex.test(username);
+  };
+
+  // Verificar si el username ya existe
+  const checkUsernameExists = async (username: string) => {
+    try {
+      const result = await authService.checkUsername(username);
+      return result.exists;
+    } catch (error) {
+      console.error('Error verificando username:', error);
+      return false;
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,9 +72,22 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
       return;
     }
 
+    // Validar nombre (mínimo 2 caracteres)
+    if (formData.nombre.trim().length < 2) {
+      setError('El nombre debe tener al menos 2 caracteres');
+      return;
+    }
+
     // Validar username
     if (!validateUsername(formData.username)) {
       setError('El nombre de usuario debe tener entre 3 y 20 caracteres y solo puede contener letras, números, puntos y guiones bajos');
+      return;
+    }
+
+    // Verificar si el username ya existe
+    const usernameExists = await checkUsernameExists(formData.username);
+    if (usernameExists) {
+      setError('El nombre de usuario ya está en uso. Por favor, elige otro.');
       return;
     }
 
@@ -76,26 +111,45 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
       return;
     }
 
+    setIsLoading(true);
+
     try {
-      // Registrar en el backend
-      await register({
-        nombre: formData.nombre,
-        username: formData.username,
-        email: formData.email,
+      // Registrar usuario usando el authService
+      const result = await authService.register({
+        name: formData.nombre.trim(),
+        username: formData.username.trim().toLowerCase(),
+        email: formData.email.trim().toLowerCase(),
         password: formData.password,
-        empresa: formData.empresa
+        confirmPassword: formData.confirmPassword,
+        empresa: formData.empresa.trim() || undefined
       });
-      
-      setSuccess('¡Cuenta creada exitosamente! Redirigiendo al login...');
-      
-      setTimeout(() => {
-        onSwitchToLogin();
-      }, 2000);
+
+      if (result && result.user) {
+        setSuccess('¡Cuenta creada exitosamente! Redirigiendo al login...');
+        
+        // Limpiar el formulario después del registro exitoso
+        setTimeout(() => {
+          setFormData({
+            nombre: '',
+            username: '',
+            email: '',
+            password: '',
+            confirmPassword: '',
+            empresa: ''
+          });
+          setAcceptTerms(false);
+          onSwitchToLogin();
+        }, 2000);
+      }
       
     } catch (err: any) {
       setError(err.message || 'Error al registrar usuario');
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  const loading = isLoading || authLoading;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 py-8">
@@ -129,7 +183,7 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
                 placeholder="Juan Pérez"
                 required
-                disabled={isLoading || success !== ''}
+                disabled={loading || success !== ''}
               />
             </div>
 
@@ -146,10 +200,10 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
                 placeholder="juan.perez"
                 required
-                disabled={isLoading || success !== ''}
+                disabled={loading || success !== ''}
               />
               <p className="text-xs text-gray-400 mt-1">
-                Mínimo 3 caracteres. Puedes usar letras, números, puntos y guiones bajos
+                Mínimo 3 caracteres. Solo letras, números, puntos y guiones bajos
               </p>
             </div>
 
@@ -166,7 +220,7 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
                 placeholder="nombre@empresa.com"
                 required
-                disabled={isLoading || success !== ''}
+                disabled={loading || success !== ''}
               />
             </div>
 
@@ -182,7 +236,7 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
                 onChange={handleChange}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
                 placeholder="Mi Empresa S.A."
-                disabled={isLoading || success !== ''}
+                disabled={loading || success !== ''}
               />
             </div>
 
@@ -200,13 +254,13 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm pr-12"
                   placeholder="••••••••"
                   required
-                  disabled={isLoading || success !== ''}
+                  disabled={loading || success !== ''}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-3 text-sm font-medium text-indigo-600 hover:text-indigo-800"
-                  disabled={isLoading || success !== ''}
+                  disabled={loading || success !== ''}
                 >
                   {showPassword ? 'Ocultar' : 'Mostrar'}
                 </button>
@@ -228,13 +282,13 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm pr-12"
                   placeholder="••••••••"
                   required
-                  disabled={isLoading || success !== ''}
+                  disabled={loading || success !== ''}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-3 top-3 text-sm font-medium text-indigo-600 hover:text-indigo-800"
-                  disabled={isLoading || success !== ''}
+                  disabled={loading || success !== ''}
                 >
                   {showConfirmPassword ? 'Ocultar' : 'Mostrar'}
                 </button>
@@ -286,7 +340,7 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
                 checked={acceptTerms}
                 onChange={(e) => setAcceptTerms(e.target.checked)}
                 className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                disabled={isLoading || success !== ''}
+                disabled={loading || success !== ''}
               />
               <span className="text-sm text-gray-600">
                 Acepto los{' '}
@@ -303,10 +357,10 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
             {/* Botón */}
             <button
               type="submit"
-              disabled={isLoading || success !== ''}
+              disabled={loading || success !== ''}
               className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 px-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              {isLoading ? (
+              {loading ? (
                 <span className="flex items-center justify-center">
                   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -326,7 +380,7 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
                 type="button"
                 onClick={onSwitchToLogin}
                 className="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline"
-                disabled={isLoading}
+                disabled={loading}
               >
                 Iniciar sesión
               </button>
@@ -335,7 +389,7 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-8">
-          Todos los derechos reservados.
+          Todos los derechos reservados. © {new Date().getFullYear()}
         </p>
       </div>
     </div>

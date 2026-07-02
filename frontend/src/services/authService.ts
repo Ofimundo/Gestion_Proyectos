@@ -1,197 +1,301 @@
+// src/services/authService.ts
 import type { User, LoginCredentials, RegisterData, ForgotPasswordData, ResetPasswordData, AuthResponse } from '../types/auth.types';
+import api from './api';
 
 class AuthService {
-  // Obtener usuarios registrados del localStorage
-  private getUsers(): User[] {
-    const users = localStorage.getItem('registered_users');
-    return users ? JSON.parse(users) : [];
-  }
-
-  // Guardar usuarios en localStorage
-  private saveUsers(users: User[]): void {
-    localStorage.setItem('registered_users', JSON.stringify(users));
-  }
-
-  // Generar ID único
-  private generateId(): string {
-    return Math.random().toString(36).substring(2) + Date.now().toString(36);
-  }
-
-  // Generar token simple
-  private generateToken(userId: string): string {
-    return btoa(`${userId}:${Date.now()}:${Math.random()}`);
-  }
-
-  // Login
+  // Login - Usa la API real
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    // Simular delay de red
-    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      console.log('🔐 AuthService: Intentando login con:', credentials.email);
+      
+      const response = await api.post('/auth/login', {
+        email: credentials.email,
+        password: credentials.password
+      });
 
-    const users = this.getUsers();
-    const user = users.find(u => u.email === credentials.email);
-
-    if (!user) {
-      throw new Error('Usuario no encontrado');
-    }
-
-    // Verificar contraseña (en un caso real estaría hasheada)
-    const storedCredentials = localStorage.getItem(`user_${user.id}`);
-    if (storedCredentials) {
-      const creds = JSON.parse(storedCredentials);
-      if (creds.password !== credentials.password) {
-        throw new Error('Contraseña incorrecta');
+      const data = response.data;
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Error al iniciar sesión');
       }
-    }
 
-    const token = this.generateToken(user.id);
-    
-    // Guardar sesión
-    localStorage.setItem('current_user', JSON.stringify(user));
-    localStorage.setItem('token', token);
+      // Guardar token y usuario en localStorage
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+        console.log('✅ Token guardado en localStorage');
+      }
+      if (data.user) {
+        localStorage.setItem('current_user', JSON.stringify(data.user));
+        console.log('✅ Usuario guardado en localStorage:', data.user);
+      }
 
-    return { user, token };
-  }
-
-  // Registro
-  async register(data: RegisterData): Promise<AuthResponse> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const users = this.getUsers();
-    
-    // Verificar si el email ya existe
-    if (users.some(u => u.email === data.email)) {
-      throw new Error('El email ya está registrado');
-    }
-
-    // Verificar que las contraseñas coincidan
-    if (data.password !== data.confirmPassword) {
-      throw new Error('Las contraseñas no coinciden');
-    }
-
-    // Crear nuevo usuario
-    const newUser: User = {
-      id: this.generateId(),
-      email: data.email,
-      name: data.name,
-      createdAt: new Date().toISOString()
-    };
-
-    // Guardar usuario
-    users.push(newUser);
-    this.saveUsers(users);
-
-    // Guardar credenciales (solo para simulación)
-    const credentials = {
-      email: data.email,
-      password: data.password
-    };
-    localStorage.setItem(`user_${newUser.id}`, JSON.stringify(credentials));
-
-    const token = this.generateToken(newUser.id);
-    localStorage.setItem('current_user', JSON.stringify(newUser));
-    localStorage.setItem('token', token);
-
-    return { 
-      user: newUser, 
-      token,
-      message: 'Usuario registrado exitosamente'
-    };
-  }
-
-  // Recuperar contraseña
-  async forgotPassword(data: ForgotPasswordData): Promise<{ message: string }> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const users = this.getUsers();
-    const user = users.find(u => u.email === data.email);
-
-    if (!user) {
-      // Por seguridad, no revelamos si el email existe
-      return { 
-        message: 'Si el email está registrado, recibirás instrucciones' 
+      return {
+        user: data.user,
+        token: data.token,
+        message: data.message || 'Login exitoso'
       };
+    } catch (error: any) {
+      console.error('❌ Error en login:', error);
+      const message = error.response?.data?.message || error.message || 'Error al iniciar sesión';
+      throw new Error(message);
     }
-
-    // Generar token de recuperación
-    const resetToken = this.generateToken(user.id);
-    const resetData = {
-      userId: user.id,
-      token: resetToken,
-      expires: Date.now() + 3600000 // 1 hora
-    };
-    
-    localStorage.setItem(`reset_${user.id}`, JSON.stringify(resetData));
-    console.log(`Token de recuperación: ${resetToken}`);
-
-    return { 
-      message: 'Se han enviado instrucciones a tu correo' 
-    };
   }
 
-  // Resetear contraseña
-  async resetPassword(data: ResetPasswordData): Promise<{ message: string }> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const users = this.getUsers();
-    let resetData: any = null;
-    let userId: string | null = null;
-
-    // Buscar el token
-    for (const user of users) {
-      const stored = localStorage.getItem(`reset_${user.id}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.token === data.token) {
-          resetData = parsed;
-          userId = user.id;
-          break;
-        }
+  // Registro - Usa la API real
+  async register(data: RegisterData): Promise<AuthResponse> {
+    try {
+      // Verificar que las contraseñas coincidan (si confirmPassword está provisto)
+      if (data.confirmPassword !== undefined && data.password !== data.confirmPassword) {
+        throw new Error('Las contraseñas no coinciden');
       }
+
+      const response = await api.post('/auth/register', {
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        username: data.username || data.email.split('@')[0],
+        empresa: data.empresa || null
+      });
+
+      const result = response.data;
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Error al registrar usuario');
+      }
+
+      // Guardar token y usuario en localStorage
+      if (result.token) {
+        localStorage.setItem('token', result.token);
+      }
+      if (result.user) {
+        localStorage.setItem('current_user', JSON.stringify(result.user));
+      }
+
+      return {
+        user: result.user,
+        token: result.token,
+        message: result.message || 'Usuario registrado exitosamente'
+      };
+    } catch (error: any) {
+      console.error('Error en registro:', error);
+      const message = error.response?.data?.message || error.message || 'Error al registrar usuario';
+      throw new Error(message);
     }
+  }
 
-    if (!resetData || !userId) {
-      throw new Error('Token inválido');
+  // Recuperar contraseña - Usa la API real
+  async forgotPassword(data: ForgotPasswordData): Promise<{ message: string }> {
+    try {
+      const response = await api.post('/auth/forgot-password', {
+        email: data.email
+      });
+
+      const result = response.data;
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Error al procesar la solicitud');
+      }
+
+      return {
+        message: result.message || 'Si el email está registrado, recibirás instrucciones'
+      };
+    } catch (error: any) {
+      console.error('Error en forgotPassword:', error);
+      const message = error.response?.data?.message || error.message || 'Error al procesar la solicitud';
+      throw new Error(message);
     }
+  }
 
-    // Verificar expiración
-    if (Date.now() > resetData.expires) {
-      throw new Error('El token ha expirado');
+  // Resetear contraseña - Usa la API real
+  async resetPassword(data: ResetPasswordData): Promise<{ message: string }> {
+    try {
+      // Verificar que las contraseñas coincidan
+      if (data.password !== data.confirmPassword) {
+        throw new Error('Las contraseñas no coinciden');
+      }
+
+      const response = await api.post('/auth/reset-password', {
+        token: data.token,
+        email: data.email,
+        password: data.password,
+        confirmPassword: data.confirmPassword
+      });
+
+      const result = response.data;
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Error al restablecer la contraseña');
+      }
+
+      return {
+        message: result.message || 'Contraseña actualizada exitosamente'
+      };
+    } catch (error: any) {
+      console.error('Error en resetPassword:', error);
+      const message = error.response?.data?.message || error.message || 'Error al restablecer la contraseña';
+      throw new Error(message);
     }
+  }
 
-    // Verificar contraseñas
-    if (data.password !== data.confirmPassword) {
-      throw new Error('Las contraseñas no coinciden');
+  // Resetear contraseña por nombre de usuario (método directo sin email)
+  async resetPasswordByUsername(username: string, newPassword: string): Promise<{ message: string }> {
+    try {
+      const response = await api.post('/auth/reset-password-by-username', {
+        username,
+        newPassword
+      });
+
+      const result = response.data;
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Error al restablecer la contraseña');
+      }
+
+      return {
+        message: result.message || 'Contraseña actualizada exitosamente'
+      };
+    } catch (error: any) {
+      console.error('Error en resetPasswordByUsername:', error);
+      const message = error.response?.data?.message || error.message || 'Error al restablecer la contraseña';
+      throw new Error(message);
     }
+  }
 
-    // Actualizar contraseña
-    const userCredentials = localStorage.getItem(`user_${userId}`);
-    if (userCredentials) {
-      const creds = JSON.parse(userCredentials);
-      creds.password = data.password;
-      localStorage.setItem(`user_${userId}`, JSON.stringify(creds));
+  // Verificar si un usuario existe (por nombre, username o email)
+  async checkUsername(username: string): Promise<{ exists: boolean; nombre: string | null }> {
+    try {
+      const response = await api.post('/auth/check-username', { username });
+      const result = response.data;
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Error al verificar usuario');
+      }
+
+      return {
+        exists: result.exists,
+        nombre: result.nombre
+      };
+    } catch (error: any) {
+      console.error('Error en checkUsername:', error);
+      const message = error.response?.data?.message || error.message || 'Error al verificar usuario';
+      throw new Error(message);
     }
+  }
 
-    // Eliminar token usado
-    localStorage.removeItem(`reset_${userId}`);
+  // Obtener usuario actual - Usa la API real
+  async getCurrentUser(): Promise<User | null> {
+    try {
+      // Primero verificar si hay token
+      const token = localStorage.getItem('token');
+      if (!token) {
+        return null;
+      }
 
-    return { message: 'Contraseña actualizada exitosamente' };
+      const response = await api.get('/auth/me');
+      const result = response.data;
+      
+      if (!result.success) {
+        // Si hay error, limpiar localStorage
+        localStorage.removeItem('token');
+        localStorage.removeItem('current_user');
+        return null;
+      }
+
+      // Actualizar usuario en localStorage
+      if (result.user) {
+        localStorage.setItem('current_user', JSON.stringify(result.user));
+      }
+
+      return result.user || null;
+    } catch (error: any) {
+      console.error('Error en getCurrentUser:', error);
+      // Si hay error, limpiar localStorage
+      localStorage.removeItem('token');
+      localStorage.removeItem('current_user');
+      return null;
+    }
+  }
+
+  // Actualizar perfil de usuario
+  async updateProfile(userData: Partial<User>): Promise<User> {
+    try {
+      const response = await api.put('/auth/profile', userData);
+      const result = response.data;
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Error al actualizar perfil');
+      }
+
+      // Actualizar usuario en localStorage
+      if (result.user) {
+        localStorage.setItem('current_user', JSON.stringify(result.user));
+      }
+
+      return result.user;
+    } catch (error: any) {
+      console.error('Error en updateProfile:', error);
+      const message = error.response?.data?.message || error.message || 'Error al actualizar perfil';
+      throw new Error(message);
+    }
+  }
+
+  // Cambiar contraseña
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+    try {
+      const response = await api.put('/auth/change-password', {
+        currentPassword,
+        newPassword
+      });
+
+      const result = response.data;
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Error al cambiar contraseña');
+      }
+
+      return {
+        message: result.message || 'Contraseña cambiada exitosamente'
+      };
+    } catch (error: any) {
+      console.error('Error en changePassword:', error);
+      const message = error.response?.data?.message || error.message || 'Error al cambiar contraseña';
+      throw new Error(message);
+    }
   }
 
   // Logout
   logout(): void {
     localStorage.removeItem('current_user');
     localStorage.removeItem('token');
+    console.log('👋 Sesión cerrada');
   }
 
-  // Obtener usuario actual
-  getCurrentUser(): User | null {
+  // Obtener usuario desde localStorage (sincrónico)
+  getLocalUser(): User | null {
     const user = localStorage.getItem('current_user');
     return user ? JSON.parse(user) : null;
   }
 
-  // Verificar si está autenticado
+  // Verificar si está autenticado (basado en token)
   isAuthenticated(): boolean {
-    return !!localStorage.getItem('token') && !!this.getCurrentUser();
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('current_user');
+    return !!(token && user);
+  }
+
+  // Obtener el token
+  getToken(): string | null {
+    return localStorage.getItem('token');
+  }
+
+  // Verificar que el token sea válido (opcional)
+  async verifyToken(): Promise<boolean> {
+    try {
+      const user = await this.getCurrentUser();
+      return !!user;
+    } catch (error) {
+      return false;
+    }
   }
 }
 
