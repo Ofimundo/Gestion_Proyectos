@@ -4,6 +4,27 @@ const path = require('path');
 
 console.log('🔄 Iniciando compilación multiplataforma...');
 
+function copyRecursiveSync(src, dest) {
+  try {
+    const exists = fs.existsSync(src);
+    const stats = exists && fs.statSync(src);
+    const isDirectory = exists && stats.isDirectory();
+    if (isDirectory) {
+      if (!fs.existsSync(dest)) {
+        fs.mkdirSync(dest, { recursive: true });
+      }
+      fs.readdirSync(src).forEach((childItemName) => {
+        copyRecursiveSync(path.join(src, childItemName), path.join(dest, childItemName));
+      });
+    } else {
+      fs.copyFileSync(src, dest);
+    }
+  } catch (err) {
+    console.log(`❌ Error copying ${src} to ${dest}:`, err.message);
+    throw err;
+  }
+}
+
 try {
   // 1. Instalar dependencias del frontend
   console.log('📦 Instalando dependencias en la carpeta frontend...');
@@ -22,7 +43,7 @@ try {
     fs.rmSync(destDist, { recursive: true, force: true });
   }
 
-  fs.cpSync(srcDist, destDist, { recursive: true });
+  copyRecursiveSync(srcDist, destDist);
   fs.rmSync(srcDist, { recursive: true, force: true });
 
   console.log('✅ ¡Compilación completada exitosamente!');

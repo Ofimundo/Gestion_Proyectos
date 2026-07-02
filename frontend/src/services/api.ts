@@ -7,13 +7,20 @@ interface ErrorResponse {
   errors?: any[];
 }
 
-// Obtener la URL de la API con validación
+// Obtener la URL de la API con validación y fallback inteligente
 const getApiUrl = (): string => {
-  // Verificar si import.meta.env existe y tiene VITE_API_URL
+  // 1. Verificar si import.meta.env existe y tiene VITE_API_URL
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  return 'http://localhost:3001/api';
+  
+  // 2. Si estamos en desarrollo local (localhost), usar el backend de desarrollo local
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return 'http://localhost:3001/api';
+  }
+  
+  // 3. Por defecto en producción (Vercel), apuntar al backend en Render
+  return 'https://gestion-proyectos-backend-9nj0.onrender.com/api';
 };
 
 const API_URL = getApiUrl();
