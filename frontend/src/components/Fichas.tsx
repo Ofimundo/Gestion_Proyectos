@@ -113,18 +113,66 @@ const Fichas: React.FC = () => {
   const [showRecursosSelector, setShowRecursosSelector] = useState(false);
   const [tempRecursos, setTempRecursos] = useState<{ id: string; nombre: string; cargo: string; horasDisponibles?: number; horasAsignadas?: number }[]>([]);
 
+  // Softland Clients Autocomplete States
+  const [clientesOriginales, setClientesOriginales] = useState<any[]>([]);
+  const [clientesSugeridos, setClientesSugeridos] = useState<any[]>([]);
+  const [loadingClientes, setLoadingClientes] = useState(false);
+  const [showClientesDropdown, setShowClientesDropdown] = useState(false);
+
+  useEffect(() => {
+    const handleOutsideClick = () => {
+      setShowClientesDropdown(false);
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, []);
+
+  const loadClientes = async () => {
+    try {
+      setLoadingClientes(true);
+      const res = await api.get('/softland/clientes');
+      if (res.data.success) {
+        setClientesOriginales(res.data.data);
+        setClientesSugeridos(res.data.data.slice(0, 50));
+      }
+    } catch (err) {
+      console.error('Error cargando clientes:', err);
+    } finally {
+      setLoadingClientes(false);
+    }
+  };
+
+  // ✅ Extraer código desde observaciones de la solicitud
+  const extractCodigoFromObservaciones = (observaciones: string): string | null => {
+    if (!observaciones) return null;
+    const match = observaciones.match(/C[oó]digo:\s*([a-zA-Z0-9_-]+)/i);
+    return match ? match[1] : null;
+  };
+
   // ✅ Generar código
   const generateCodigo = (nombre: string) => {
-    if (!nombre) return 'PROJ-0000';
-    const palabras = nombre.split(' ');
-    let letras = '';
-    if (palabras.length >= 2) {
-      letras = (palabras[0][0] + palabras[1][0]).toUpperCase();
-    } else {
-      letras = nombre.substring(0, 2).toUpperCase();
+    if (!nombre) return 'proj_01';
+    const clean = nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '');
+    const prefix = clean.substring(0, 4);
+    
+    if (!prefix) return 'proj_01';
+
+    // Buscar en fichas existentes
+    const matchingCodes = fichas
+      .filter(f => f.codigo && f.codigo.toLowerCase().startsWith(`${prefix}_`))
+      .map(f => {
+        const parts = f.codigo.split('_');
+        const num = parseInt(parts[parts.length - 1], 10);
+        return isNaN(num) ? 0 : num;
+      });
+
+    let nextNum = 1;
+    if (matchingCodes.length > 0) {
+      nextNum = Math.max(...matchingCodes) + 1;
     }
-    const numeros = Math.floor(1000 + Math.random() * 9000);
-    return `${letras}-${numeros}`;
+    
+    const numStr = nextNum.toString().padStart(2, '0');
+    return `${prefix}_${numStr}`;
   };
 
   // ✅ CORREGIDO: useEffect para convertir solicitud a ficha
@@ -148,9 +196,11 @@ const Fichas: React.FC = () => {
       setTempRecursos([]);
       setModalMode('add');
       
+      const extractedCode = extractCodigoFromObservaciones(solicitud.observaciones || '');
+
       // Establecer los datos del formulario
       setFormData({
-        codigo: generateCodigo(solicitud.nombreProyecto || ''),
+        codigo: extractedCode || generateCodigo(solicitud.nombreProyecto || ''),
         nombreProyecto: solicitud.nombreProyecto || '',
         cliente: solicitud.nombreContraparteCliente || solicitud.area || '',
         lider: '',
@@ -328,6 +378,7 @@ const Fichas: React.FC = () => {
     loadProfesionales();
     loadFichas();
     loadHorasAsignadas();
+    loadClientes();
 
     const handleStorageChange = () => {
       loadProfesionales();
@@ -396,6 +447,15 @@ const Fichas: React.FC = () => {
     } else {
       // Para todos los demás campos, actualizar normalmente
       setFormData(prev => ({ ...prev, [name]: value }));
+    }
+
+    if (name === 'cliente') {
+      const filtered = clientesOriginales.filter(c => 
+        (c.NomAux || '').toLowerCase().includes(value.toLowerCase()) ||
+        (c.RutAux || '').toLowerCase().includes(value.toLowerCase())
+      );
+      setClientesSugeridos(filtered.slice(0, 50));
+      setShowClientesDropdown(true);
     }
   };
 
@@ -980,17 +1040,50 @@ const Fichas: React.FC = () => {
                         </div>
 
                         {/* Cliente - EDITABLE */}
-                        <div>
+                        <div className="relative" onClick={(e) => e.stopPropagation()}>
                           <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">🏢 Cliente *</label>
                           <input 
                             type="text" 
                             name="cliente" 
                             value={formData.cliente || ''} 
                             onChange={handleInputChange} 
+                            onFocus={() => {
+                              const filtered = clientesOriginales.filter(c => 
+                                (c.NomAux || '').toLowerCase().includes((formData.cliente || '').toLowerCase()) ||
+                                (c.RutAux || '').toLowerCase().includes((formData.cliente || '').toLowerCase())
+                              );
+                              setClientesSugeridos(filtered.slice(0, 50));
+                              setShowClientesDropdown(true);
+                            }}
                             className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded focus:border-purple-500 outline-none" 
                             required 
+                            autoComplete="off"
                           />
                           {errors.cliente && <p className="text-red-500 text-xs mt-1">{errors.cliente}</p>}
+                          {showClientesDropdown && (clientesSugeridos.length > 0 || loadingClientes) && (
+                            <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                              {loadingClientes ? (
+                                <div className="px-4 py-2.5 text-xs text-gray-500 flex items-center gap-2">
+                                  <span className="animate-spin border-2 border-indigo-500 border-t-transparent rounded-full h-3 w-3 inline-block"></span>
+                                  Buscando clientes...
+                                </div>
+                              ) : (
+                                clientesSugeridos.map((c) => (
+                                  <div
+                                    key={c.CodAux}
+                                    onClick={() => {
+                                      setFormData(prev => ({ ...prev, cliente: c.NomAux }));
+                                      setShowClientesDropdown(false);
+                                    }}
+                                    className="px-4 py-2.5 text-xs sm:text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer transition-colors border-b last:border-0 border-gray-100"
+                                  >
+                                    <div className="font-bold text-gray-900 leading-tight">{c.NomAux}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">RUT: {c.RutAux}</div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {/* Líder - Select editable */}

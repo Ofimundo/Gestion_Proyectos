@@ -22,6 +22,7 @@ interface FichaProspecto {
   garantia?: string;
   horasSoporte?: number;
   totalIngresos?: number;
+  tipoCliente?: string;
   estimaciones?: {
     mensual?: { [key: string]: number };
     semanal?: { [key: string]: number };
@@ -103,6 +104,30 @@ const getEstadoColor = (estado: string): string => {
   return 'bg-gray-400 text-white';
 };
 
+const generateVigenteCode = (nombre: string, existingProspectos: FichaProspecto[], currentId?: string | null): string => {
+  if (!nombre) return 'proj_01';
+  const clean = nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '');
+  const prefix = clean.substring(0, 4);
+  
+  if (!prefix) return 'proj_01';
+
+  const matchingCodes = existingProspectos
+    .filter(p => p.id !== currentId && p.codigo && p.codigo.toLowerCase().startsWith(`${prefix}_`))
+    .map(p => {
+      const parts = p.codigo.split('_');
+      const num = parseInt(parts[parts.length - 1], 10);
+      return isNaN(num) ? 0 : num;
+    });
+
+  let nextNum = 1;
+  if (matchingCodes.length > 0) {
+    nextNum = Math.max(...matchingCodes) + 1;
+  }
+  
+  const numStr = nextNum.toString().padStart(2, '0');
+  return `${prefix}_${numStr}`;
+};
+
 interface FichasProspectoProps {
   onConvertToProject?: (p: FichaProspecto) => void;
 }
@@ -155,6 +180,7 @@ const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject })
     garantia: '',
     horasSoporte: 0,
     totalIngresos: 0,
+    tipoCliente: 'Nuevo',
     estimaciones: {
       mensual: {} as { [key: string]: number },
       semanal: {} as { [key: string]: number },
@@ -167,6 +193,66 @@ const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject })
   // Custom Delete Confirm Modal State
   const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
+
+  // Softland Clients and Salespeople Autocomplete States
+  const [clientesOriginales, setClientesOriginales] = useState<any[]>([]);
+  const [clientesSugeridos, setClientesSugeridos] = useState<any[]>([]);
+  const [loadingClientes, setLoadingClientes] = useState(false);
+  const [showClientesDropdown, setShowClientesDropdown] = useState(false);
+  
+  const [vendedoresOriginales, setVendedoresOriginales] = useState<any[]>([]);
+  const [vendedoresSugeridos, setVendedoresSugeridos] = useState<any[]>([]);
+  const [showVendedoresDropdown, setShowVendedoresDropdown] = useState(false);
+
+  useEffect(() => {
+    const handleOutsideClick = () => {
+      setShowClientesDropdown(false);
+      setShowVendedoresDropdown(false);
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, []);
+
+  const loadClientes = async () => {
+    try {
+      setLoadingClientes(true);
+      const res = await api.get('/softland/clientes');
+      if (res.data.success) {
+        setClientesOriginales(res.data.data);
+        setClientesSugeridos(res.data.data.slice(0, 50));
+      }
+    } catch (err) {
+      console.error('Error cargando clientes:', err);
+    } finally {
+      setLoadingClientes(false);
+    }
+  };
+
+  const loadVendedores = async () => {
+    try {
+      const res = await api.get('/softland/vendedores');
+      if (res.data.success) {
+        setVendedoresOriginales(res.data.data);
+        setVendedoresSugeridos(res.data.data.slice(0, 50));
+      }
+    } catch (err) {
+      console.error('Error cargando vendedores:', err);
+    }
+  };
+
+  const handleSelectCliente = (c: any) => {
+    setFormData(prev => {
+      const updated = {
+        ...prev,
+        cliente: c.NomAux
+      };
+      if (c.VenDes) {
+        updated.gestorComercial = c.VenDes;
+      }
+      return updated;
+    });
+    setShowClientesDropdown(false);
+  };
 
   // Load prospectos
   const loadProspectos = async () => {
@@ -188,24 +274,51 @@ const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject })
 
   useEffect(() => {
     loadProspectos();
+    loadVendedores();
+    loadClientes();
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     const numberFields = ['valorServicio', 'margen', 'rentabilidad', 'horasSoporte', 'totalIngresos'];
     
-    setFormData(prev => ({
-      ...prev,
-      [name]: numberFields.includes(name) ? Number(value) : value
-    }));
+    setFormData(prev => {
+      const updated = {
+        ...prev,
+        [name]: numberFields.includes(name) ? Number(value) : value
+      };
+
+      if (name === 'nombreProyecto' || name === 'tipoCliente') {
+        updated.codigo = generateVigenteCode(updated.nombreProyecto, prospectos, currentId);
+      }
+
+      return updated;
+    });
+
+    if (name === 'cliente') {
+      const filtered = clientesOriginales.filter(c => 
+        (c.NomAux || '').toLowerCase().includes(value.toLowerCase()) ||
+        (c.RutAux || '').toLowerCase().includes(value.toLowerCase())
+      );
+      setClientesSugeridos(filtered.slice(0, 50));
+      setShowClientesDropdown(true);
+    }
+
+    if (name === 'gestorComercial') {
+      const filtered = vendedoresOriginales.filter(v => 
+        v.VenDes.toLowerCase().includes(value.toLowerCase())
+      );
+      setVendedoresSugeridos(filtered.slice(0, 50));
+      setShowVendedoresDropdown(true);
+    }
   };
 
   // Open Modal for Add
   const handleOpenAdd = () => {
-    const nextCode = `PRP-${Math.floor(1000 + Math.random() * 9000)}`;
     setFormData({
       ...defaultFormData,
-      codigo: nextCode
+      codigo: 'proj_01',
+      tipoCliente: 'Nuevo'
     });
     setModalMode('add');
     setCurrentId(null);
@@ -233,6 +346,7 @@ const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject })
       garantia: p.garantia || '',
       horasSoporte: p.horasSoporte || 0,
       totalIngresos: p.totalIngresos || 0,
+      tipoCliente: p.tipoCliente || 'Nuevo',
       estimaciones: {
         mensual: p.estimaciones?.mensual || {},
         semanal: p.estimaciones?.semanal || {},
@@ -828,6 +942,36 @@ const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject })
               {/* Seccion 1: Datos Generales */}
               <div>
                 <h4 className="text-sm font-bold text-indigo-600 uppercase tracking-wider mb-3">Información del Proyecto</h4>
+                
+                {/* Tipo de Cliente Selector */}
+                <div className="mb-4 bg-gray-50 p-3.5 rounded-xl border border-gray-200 max-w-md">
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Tipo de Cliente</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="radio"
+                        name="tipoCliente"
+                        value="Nuevo"
+                        checked={formData.tipoCliente === 'Nuevo'}
+                        onChange={(e) => handleInputChange(e as any)}
+                        className="text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                      />
+                      <span className="text-sm font-semibold text-gray-700">🆕 Cliente Nuevo</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="radio"
+                        name="tipoCliente"
+                        value="Vigente"
+                        checked={formData.tipoCliente === 'Vigente'}
+                        onChange={(e) => handleInputChange(e as any)}
+                        className="text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                      />
+                      <span className="text-sm font-semibold text-gray-700">🔄 Cliente Vigente</span>
+                    </label>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1">Código</label>
@@ -836,8 +980,9 @@ const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject })
                       name="codigo"
                       value={formData.codigo}
                       onChange={handleInputChange}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 animate-fade-in"
                       required
+                      readOnly
                     />
                   </div>
                   <div>
@@ -851,26 +996,87 @@ const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject })
                       required
                     />
                   </div>
-                  <div>
+                  <div className="relative" onClick={(e) => e.stopPropagation()}>
                     <label className="block text-xs font-semibold text-gray-600 mb-1">Cliente</label>
                     <input
                       type="text"
                       name="cliente"
                       value={formData.cliente}
                       onChange={handleInputChange}
+                      onFocus={() => {
+                        const filtered = clientesOriginales.filter(c => 
+                          (c.NomAux || '').toLowerCase().includes((formData.cliente || '').toLowerCase()) ||
+                          (c.RutAux || '').toLowerCase().includes((formData.cliente || '').toLowerCase())
+                        );
+                        setClientesSugeridos(filtered.slice(0, 50));
+                        setShowClientesDropdown(true);
+                      }}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                       required
+                      autoComplete="off"
                     />
+                    {showClientesDropdown && (clientesSugeridos.length > 0 || loadingClientes) && (
+                      <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {loadingClientes ? (
+                          <div className="px-4 py-2.5 text-xs text-gray-500 flex items-center gap-2">
+                            <span className="animate-spin border-2 border-indigo-500 border-t-transparent rounded-full h-3 w-3 inline-block"></span>
+                            Buscando clientes...
+                          </div>
+                        ) : (
+                          clientesSugeridos.map((c) => (
+                            <div
+                              key={c.CodAux}
+                              onClick={() => handleSelectCliente(c)}
+                              className="px-4 py-2.5 text-xs sm:text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer transition-colors border-b last:border-0 border-gray-100"
+                            >
+                              <div className="font-bold text-gray-900 leading-tight">{c.NomAux}</div>
+                              <div className="text-[10px] text-gray-500 flex justify-between mt-1">
+                                <span>RUT: {c.RutAux}</span>
+                                {c.VenDes && <span className="text-indigo-600 font-medium">Gestor: {c.VenDes}</span>}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div>
+                  <div className="relative" onClick={(e) => e.stopPropagation()}>
                     <label className="block text-xs font-semibold text-gray-600 mb-1">Gestor Comercial</label>
                     <input
                       type="text"
                       name="gestorComercial"
                       value={formData.gestorComercial}
                       onChange={handleInputChange}
+                      onFocus={() => {
+                        if (vendedoresOriginales.length === 0) {
+                          loadVendedores();
+                        }
+                        const filtered = vendedoresOriginales.filter(v => 
+                          v.VenDes.toLowerCase().includes((formData.gestorComercial || '').toLowerCase())
+                        );
+                        setVendedoresSugeridos(filtered.slice(0, 50));
+                        setShowVendedoresDropdown(true);
+                      }}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      autoComplete="off"
                     />
+                    {showVendedoresDropdown && vendedoresSugeridos.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {vendedoresSugeridos.map((v) => (
+                          <div
+                            key={v.VenCod}
+                            onClick={() => {
+                              setFormData(prev => ({ ...prev, gestorComercial: v.VenDes }));
+                              setShowVendedoresDropdown(false);
+                            }}
+                            className="px-4 py-2.5 text-xs sm:text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer transition-colors border-b last:border-0 border-gray-100"
+                          >
+                            <div className="font-semibold text-gray-900">{v.VenDes}</div>
+                            <div className="text-[10px] text-gray-500 mt-0.5">{v.EMail}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1">Centro de Costo</label>

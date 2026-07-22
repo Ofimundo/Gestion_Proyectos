@@ -88,10 +88,19 @@ async function initializeDatabase() {
                     HorasSoporte INT NULL,
                     TotalIngresos DECIMAL(18, 2) NULL,
                     Estimaciones NVARCHAR(MAX) NULL,
+                    TipoCliente NVARCHAR(50) NULL,
                     FechaCreacion DATETIME DEFAULT GETDATE(),
                     FechaActualizacion DATETIME NULL
                 );
             END
+        `);
+        // Crear columna TipoCliente si no existe (para bases de datos ya existentes)
+        await db.request().query(`
+            IF NOT EXISTS (
+                SELECT * FROM sys.columns 
+                WHERE object_id = OBJECT_ID('FichasProspecto') AND name = 'TipoCliente'
+            )
+            ALTER TABLE FichasProspecto ADD TipoCliente NVARCHAR(50) NULL;
         `);
         console.log('✅ Estructura de tabla FichasProspecto verificada.');
     }

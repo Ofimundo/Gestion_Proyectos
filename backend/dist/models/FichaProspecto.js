@@ -35,18 +35,19 @@ class FichaProspectoModel {
             .input('HorasSoporte', mssql_1.default.Int, horasSoporte)
             .input('TotalIngresos', mssql_1.default.Decimal(18, 2), totalIngresos)
             .input('Estimaciones', mssql_1.default.NVarChar, estimacionesJson)
+            .input('TipoCliente', mssql_1.default.NVarChar, data.tipoCliente || 'Nuevo')
             .query(`
                 INSERT INTO FichasProspecto (
                     Codigo, NombreProyecto, Estado, Cliente, GestorComercial, CentroCosto,
                     FechaEstimadaAdjudicacion, FechaAdjudicacion, ValorServicio, Margen, Rentabilidad,
                     PlazoEstimado, LineaServicio, FechaInicio, FechaTermino, Garantia, HorasSoporte,
-                    TotalIngresos, Estimaciones, FechaCreacion
+                    TotalIngresos, Estimaciones, TipoCliente, FechaCreacion
                 )
                 VALUES (
                     @Codigo, @NombreProyecto, @Estado, @Cliente, @GestorComercial, @CentroCosto,
                     @FechaEstimadaAdjudicacion, @FechaAdjudicacion, @ValorServicio, @Margen, @Rentabilidad,
                     @PlazoEstimado, @LineaServicio, @FechaInicio, @FechaTermino, @Garantia, @HorasSoporte,
-                    @TotalIngresos, @Estimaciones, GETDATE()
+                    @TotalIngresos, @Estimaciones, @TipoCliente, GETDATE()
                 );
                 SELECT SCOPE_IDENTITY() AS Id;
             `);
@@ -93,7 +94,8 @@ class FichaProspectoModel {
             fechaTermino: { col: 'FechaTermino', type: mssql_1.default.Date },
             garantia: { col: 'Garantia', type: mssql_1.default.NVarChar },
             horasSoporte: { col: 'HorasSoporte', type: mssql_1.default.Int },
-            totalIngresos: { col: 'TotalIngresos', type: mssql_1.default.Decimal(18, 2) }
+            totalIngresos: { col: 'TotalIngresos', type: mssql_1.default.Decimal(18, 2) },
+            tipoCliente: { col: 'TipoCliente', type: mssql_1.default.NVarChar }
         };
         Object.keys(mappings).forEach(key => {
             const val = data[key];
@@ -162,6 +164,7 @@ class FichaProspectoModel {
             horasSoporte: row.HorasSoporte !== null ? Number(row.HorasSoporte) : 0,
             totalIngresos: row.TotalIngresos !== null ? Number(row.TotalIngresos) : 0,
             estimaciones: estimacionesParsed,
+            tipoCliente: row.TipoCliente || 'Nuevo',
             created_at: row.FechaCreacion ? new Date(row.FechaCreacion).toISOString() : '',
             updated_at: row.FechaActualizacion ? new Date(row.FechaActualizacion).toISOString() : ''
         };

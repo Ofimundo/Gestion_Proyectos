@@ -46,6 +46,11 @@ console.log('   ✅ /solicitudes registrada');
 router.use('/asignaciones', asignacionesRoutes);
 console.log('   ✅ /asignaciones registrada');
 
+// Softland
+import softlandRoutes from './softland';
+router.use('/softland', softlandRoutes);
+console.log('   ✅ /softland registrada');
+
 // Enrutador de correos (Graph API)
 router.use('/', emailRoutes);
 console.log('   ✅ /email registrada');

@@ -22,6 +22,7 @@ export interface FichaProspecto {
     horasSoporte?: number;
     totalIngresos?: number;
     estimaciones?: any; // Guardado como JSON en BD
+    tipoCliente?: string; // 'Nuevo' | 'Vigente'
     created_at?: string;
     updated_at?: string;
 }
@@ -57,18 +58,19 @@ export class FichaProspectoModel {
             .input('HorasSoporte', sql.Int, horasSoporte)
             .input('TotalIngresos', sql.Decimal(18, 2), totalIngresos)
             .input('Estimaciones', sql.NVarChar, estimacionesJson)
+            .input('TipoCliente', sql.NVarChar, data.tipoCliente || 'Nuevo')
             .query(`
                 INSERT INTO FichasProspecto (
                     Codigo, NombreProyecto, Estado, Cliente, GestorComercial, CentroCosto,
                     FechaEstimadaAdjudicacion, FechaAdjudicacion, ValorServicio, Margen, Rentabilidad,
                     PlazoEstimado, LineaServicio, FechaInicio, FechaTermino, Garantia, HorasSoporte,
-                    TotalIngresos, Estimaciones, FechaCreacion
+                    TotalIngresos, Estimaciones, TipoCliente, FechaCreacion
                 )
                 VALUES (
                     @Codigo, @NombreProyecto, @Estado, @Cliente, @GestorComercial, @CentroCosto,
                     @FechaEstimadaAdjudicacion, @FechaAdjudicacion, @ValorServicio, @Margen, @Rentabilidad,
                     @PlazoEstimado, @LineaServicio, @FechaInicio, @FechaTermino, @Garantia, @HorasSoporte,
-                    @TotalIngresos, @Estimaciones, GETDATE()
+                    @TotalIngresos, @Estimaciones, @TipoCliente, GETDATE()
                 );
                 SELECT SCOPE_IDENTITY() AS Id;
             `);
@@ -119,7 +121,8 @@ export class FichaProspectoModel {
             fechaTermino: { col: 'FechaTermino', type: sql.Date },
             garantia: { col: 'Garantia', type: sql.NVarChar },
             horasSoporte: { col: 'HorasSoporte', type: sql.Int },
-            totalIngresos: { col: 'TotalIngresos', type: sql.Decimal(18, 2) }
+            totalIngresos: { col: 'TotalIngresos', type: sql.Decimal(18, 2) },
+            tipoCliente: { col: 'TipoCliente', type: sql.NVarChar }
         };
 
         Object.keys(mappings).forEach(key => {
@@ -192,6 +195,7 @@ export class FichaProspectoModel {
             horasSoporte: row.HorasSoporte !== null ? Number(row.HorasSoporte) : 0,
             totalIngresos: row.TotalIngresos !== null ? Number(row.TotalIngresos) : 0,
             estimaciones: estimacionesParsed,
+            tipoCliente: row.TipoCliente || 'Nuevo',
             created_at: row.FechaCreacion ? new Date(row.FechaCreacion).toISOString() : '',
             updated_at: row.FechaActualizacion ? new Date(row.FechaActualizacion).toISOString() : ''
         };

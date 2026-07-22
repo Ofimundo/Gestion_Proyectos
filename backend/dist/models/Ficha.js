@@ -25,7 +25,7 @@ class FichaModel {
         }
         else {
             // Crear Proyecto
-            const code = `FCH-${Math.floor(1000 + Math.random() * 9000)}`;
+            const code = data.codigo || `FCH-${Math.floor(1000 + Math.random() * 9000)}`;
             const createProj = await db.request()
                 .input('Codigo', mssql_1.default.NVarChar, code)
                 .input('NombreProyecto', mssql_1.default.NVarChar, data.nombreProyecto)

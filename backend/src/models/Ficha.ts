@@ -56,7 +56,7 @@ export class FichaModel {
                 .query('UPDATE Proyectos SET Estado = @Estado, FechaActualizacion = GETDATE() WHERE Id = @Id');
         } else {
             // Crear Proyecto
-            const code = `FCH-${Math.floor(1000 + Math.random() * 9000)}`;
+            const code = data.codigo || `FCH-${Math.floor(1000 + Math.random() * 9000)}`;
             const createProj = await db.request()
                 .input('Codigo', sql.NVarChar, code)
                 .input('NombreProyecto', sql.NVarChar, data.nombreProyecto)
