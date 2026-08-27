@@ -17,6 +17,7 @@ import ResetPassword from "./components/ResetPassword";
 import Dashboard from "./components/Dashboard";
 import Profesionales from "./components/Profesionales";
 import Fichas from "./components/Fichas";
+import FichasProspectoPage from "./components/FichasProspectoPage";
 import DashboardProyectos from "./components/DashboardProyectos";
 import Perfil from "./components/Perfil";
 import SolicitudProyecto from "./components/SolicitudProyecto";
@@ -179,6 +180,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Fichas />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/fichas-proyecto"
+        element={
+          <ProtectedRoute>
+            <Fichas />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/fichas-prospecto"
+        element={
+          <ProtectedRoute>
+            <FichasProspectoPage />
           </ProtectedRoute>
         }
       />

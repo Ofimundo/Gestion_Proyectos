@@ -41,6 +41,7 @@ const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [fichas, setFichas] = useState<Ficha[]>([]);
+  const [fichasProspecto, setFichasProspecto] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<DashboardStats>({
@@ -61,15 +62,20 @@ const Dashboard: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      // Cargar fichas (proyectos en el flujo activo)
-      const fichasResponse = await api.get('/fichas');
-      const fichasData = fichasResponse.data.success ? fichasResponse.data.data || [] : [];
+      // Cargar fichas, prospectos y profesionales en paralelo
+      const [fichasResponse, prospectosResponse, profesionalesResponse] = await Promise.all([
+        api.get('/fichas'),
+        api.get('/fichas-prospecto'),
+        api.get('/profesionales')
+      ]);
+
+      const fichasData = fichasResponse.data?.success ? fichasResponse.data.data || [] : [];
+      const prospectosData = prospectosResponse.data?.success ? prospectosResponse.data.data || [] : [];
+      const profesionalesData = profesionalesResponse.data?.success ? profesionalesResponse.data.data || [] : [];
+
       setFichas(fichasData);
       setProyectos(fichasData);
-
-      // Cargar profesionales
-      const profesionalesResponse = await api.get('/profesionales');
-      const profesionalesData = profesionalesResponse.data.success ? profesionalesResponse.data.data || [] : [];
+      setFichasProspecto(prospectosData);
 
       // Calcular estadísticas basadas en las fichas
       const proyectosActivos = fichasData.filter((f: any) => f.estado === 'En Curso').length;
@@ -123,17 +129,28 @@ const Dashboard: React.FC = () => {
     },
     {
       id: 2,
-      title: 'Fichas',
-      description: 'Gestión de fichas de proyectos',
+      title: 'Prospectos',
+      description: 'Gestión y seguimiento de prospectos comerciales',
+      icon: '📑',
+      color: 'from-indigo-500 to-purple-500',
+      bgColor: 'bg-indigo-50',
+      textColor: 'text-indigo-600',
+      route: '/fichas-prospecto',
+      stats: `${fichasProspecto.length} prospectos`
+    },
+    {
+      id: 3,
+      title: 'Ficha Proyecto',
+      description: 'Gestión de fichas de proyectos en curso',
       icon: '📋',
       color: 'from-purple-500 to-pink-500',
       bgColor: 'bg-purple-50',
       textColor: 'text-purple-600',
-      route: '/fichas',
+      route: '/fichas-proyecto',
       stats: `${fichas.length} fichas activas`
     },
     {
-      id: 3,
+      id: 4,
       title: 'Dashboard HH',
       description: 'Horas hombre, proyectos y métricas',
       icon: '📊',
@@ -144,7 +161,7 @@ const Dashboard: React.FC = () => {
       stats: `${stats.proyectosActivos} proyectos activos`
     },
     {
-      id: 4,
+      id: 5,
       title: 'Solicitud de Proyecto',
       description: 'Crear nueva solicitud de proyecto',
       icon: '📝',
@@ -155,13 +172,13 @@ const Dashboard: React.FC = () => {
       stats: 'Nueva solicitud'
     },
     {
-      id: 5,
+      id: 6,
       title: 'Dashboard Profesional',
       description: 'Proyectos y horas por profesional',
       icon: '👨‍💻',
-      color: 'from-purple-500 to-indigo-500',
-      bgColor: 'bg-purple-50',
-      textColor: 'text-purple-600',
+      color: 'from-teal-500 to-cyan-500',
+      bgColor: 'bg-teal-50',
+      textColor: 'text-teal-600',
       route: '/dashboard-profesional',
       stats: `${stats.profesionalesActivos} profesionales`
     }
@@ -272,39 +289,45 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* Grid de módulos principales */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 md:gap-8 mb-8 sm:mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 mb-10 sm:mb-12">
           {modules.map((module) => (
             <div
               key={module.id}
               onClick={() => navigate(module.route)}
-              className="bg-white rounded-xl sm:rounded-2xl shadow-lg sm:shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 cursor-pointer overflow-hidden group"
+              className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer overflow-hidden group flex flex-col justify-between border border-gray-100"
             >
-              <div className={`h-1.5 sm:h-2 bg-gradient-to-r ${module.color}`}></div>
+              <div className={`h-2 bg-gradient-to-r ${module.color}`}></div>
               
-              <div className="p-4 sm:p-6 md:p-8">
-                <div className={`w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 ${module.bgColor} rounded-xl sm:rounded-2xl flex items-center justify-center mb-3 sm:mb-4 md:mb-6 group-hover:scale-110 transition-transform`}>
-                  <span className="text-2xl sm:text-3xl md:text-4xl">{module.icon}</span>
+              <div className="p-6 sm:p-7 flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={`w-14 h-14 ${module.bgColor} rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm`}>
+                      <span className="text-2xl sm:text-3xl">{module.icon}</span>
+                    </div>
+                    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${module.bgColor} ${module.textColor}`}>
+                      Módulo
+                    </span>
+                  </div>
+
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2 group-hover:text-indigo-600 transition-colors">
+                    {module.title}
+                  </h2>
+
+                  <p className="text-sm text-gray-500 leading-relaxed mb-6">
+                    {module.description}
+                  </p>
                 </div>
 
-                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-2 sm:mb-3">
-                  {module.title}
-                </h2>
-
-                <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-                  {module.description}
-                </p>
-
-                <div className="flex items-center justify-between">
+                <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
                   <span className={`text-xs sm:text-sm font-semibold ${module.textColor}`}>
                     {module.stats}
                   </span>
-                  <button className={`${module.textColor} hover:opacity-80 font-medium text-xs sm:text-sm flex items-center`}>
-                    <span className="hidden xs:inline">Acceder</span>
-                    <span className="xs:hidden">Ir</span>
-                    <svg className="w-3 h-3 sm:w-4 sm:h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className={`inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold ${module.textColor} group-hover:translate-x-1 transition-transform`}>
+                    <span>Acceder</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
-                  </button>
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,6 +1,6 @@
 // src/components/SolicitudProyecto.tsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import emailService from '../services/emailService';
 
@@ -470,10 +470,7 @@ const ModalDetallesSolicitud: React.FC<{
 
 const SolicitudProyecto: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const [solicitudes, setSolicitudes] = useState<SolicitudProyecto[]>([]);
-  const [showConvertOptionModal, setShowConvertOptionModal] = useState(false);
-  const [pendingProspecto, setPendingProspecto] = useState<any>(null);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [mostrarModalRechazo, setMostrarModalRechazo] = useState<string | null>(null);
@@ -626,14 +623,7 @@ const SolicitudProyecto: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (location.state && location.state.convertFromProspecto) {
-      const prospecto = location.state.convertFromProspecto;
-      setPendingProspecto(prospecto);
-      setShowConvertOptionModal(true);
-      window.history.replaceState({}, document.title);
-    }
-  }, [location]);
+
 
   const handleVerDetalles = (solicitud: SolicitudProyecto) => {
     console.log('🔍 Ver detalles de solicitud:', solicitud.id);
@@ -642,57 +632,7 @@ const SolicitudProyecto: React.FC = () => {
     setMostrarModalDetalles(true);
   };
 
-  const handleOptionCompletarAhora = () => {
-    if (!pendingProspecto) return;
-    setEditingId(null);
-    setFormData({
-      nombreSolicitante: '',
-      area: pendingProspecto.lineaServicio || '',
-      gerenteSponsor: '',
-      nombreProyecto: pendingProspecto.nombreProyecto || '',
-      objetivoGeneral: '',
-      objetivosEspecificos: '',
-      coberturaAlcance: '',
-      focoEstrategico: '',
-      impacto: '',
-      tieneSustentoLegal: false,
-      sustentoLegalCual: '',
-      tieneRequisitoFecha: false,
-      requisitoFechaCual: '',
-      requisitoFechaPorque: '',
-      nombreResponsableProyecto: pendingProspecto.gestorComercial || '',
-      equipo: '',
-      nombreContraparteCliente: pendingProspecto.cliente || '',
-      areaContraparte: '',
-      nombreJefaturaDirecta: '',
-      descripcionGeneral: `Línea de servicio: ${pendingProspecto.lineaServicio || ''}. Garantía: ${pendingProspecto.garantia || ''}. Horas Soporte: ${pendingProspecto.horasSoporte || 0}.`,
-      presupuesto: pendingProspecto.valorServicio || 0,
-      tiempo: pendingProspecto.plazoEstimado || '',
-      otrasRestricciones: '',
-      riesgos: '',
-      valorDolar: 0,
-      fechaInicio: pendingProspecto.fechaInicio ? pendingProspecto.fechaInicio.split('T')[0] : '',
-      estado: 'Pendiente',
-      fechaSolicitud: new Date().toISOString().split('T')[0],
-      observaciones: `Prospecto de origen comercial. Código: ${pendingProspecto.codigo}. Centro de Costo: ${pendingProspecto.centroCosto || ''}.`,
-      profesionalesAsignados: [],
-      estimacionHorasTotal: 0
-    });
-    setShowConvertOptionModal(false);
-    setMostrarFormulario(true);
-  };
 
-  const handleOptionEnviarEmail = () => {
-    if (!pendingProspecto) return;
-    setEmailSimpleData({
-      nombreSolicitante: pendingProspecto.cliente || '',
-      area: pendingProspecto.lineaServicio || '',
-      nombreProyecto: pendingProspecto.nombreProyecto || '',
-      emailDestinatario: ''
-    });
-    setShowConvertOptionModal(false);
-    setMostrarModalEmailSimple(true);
-  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -1105,47 +1045,7 @@ const SolicitudProyecto: React.FC = () => {
           </div>
         </div>
 
-        {/* Modal Opción Conversión Prospecto */}
-        {showConvertOptionModal && pendingProspecto && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-gray-100">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-gray-900">Prospecto Aceptado</h3>
-                <button onClick={() => setShowConvertOptionModal(false)} className="text-gray-400 hover:text-gray-600">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-              </div>
-              <div className="mb-6">
-                <p className="text-sm text-gray-600 mb-2">
-                  Se ha cargado el prospecto: <strong>{pendingProspecto.codigo} - {pendingProspecto.nombreProyecto}</strong>
-                </p>
-                <p className="text-xs text-gray-500">
-                  ¿Cómo desea registrar la solicitud de proyecto correspondiente?
-                </p>
-              </div>
-              <div className="grid grid-cols-1 gap-3">
-                <button 
-                  onClick={handleOptionCompletarAhora}
-                  className="w-full px-4 py-3 bg-indigo-600 text-white rounded-xl font-semibold text-sm hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-sm animate-pulse"
-                >
-                  📝 Rellenar y Completar Ahora
-                </button>
-                <button 
-                  onClick={handleOptionEnviarEmail}
-                  className="w-full px-4 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-sm"
-                >
-                  📧 Enviar Link por Email al Solicitante
-                </button>
-                <button 
-                  onClick={() => setShowConvertOptionModal(false)}
-                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-xl text-xs hover:bg-gray-200 transition-all"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+
 
         {/* Modal de envío por email */}
         {mostrarModalEmailSimple && (
