@@ -23,6 +23,7 @@ import Perfil from "./components/Perfil";
 import SolicitudProyecto from "./components/SolicitudProyecto";
 import PublicSolicitudForm from "./components/PublicSolicitudForm";
 import Admin from "./components/Admin";
+import GestionDemanda from "./components/GestionDemanda";
 
 // Componente para rutas protegidas
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -236,6 +237,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Admin />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/gestion-demanda"
+        element={
+          <ProtectedRoute>
+            <GestionDemanda />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/demanda"
+        element={
+          <ProtectedRoute>
+            <GestionDemanda />
           </ProtectedRoute>
         }
       />

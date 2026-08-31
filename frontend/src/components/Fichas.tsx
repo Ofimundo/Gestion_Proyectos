@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import api from '../services/api';
+import emailService from '../services/emailService';
+import { showSuccess, showError } from './Toast';
 
 interface Profesional {
   id: string;
@@ -35,6 +37,7 @@ interface Ficha {
   liderId?: string;
   descripcion: string;
   tecnologias: string;
+  etapaLifecycle?: string;
   venta: number;
   hhImplementacion: number;
   hhPeriodo: number;
@@ -58,6 +61,289 @@ interface Ficha {
   }>;
 }
 
+// Componente Modal para Traspasar Ficha a Solicitud de Proyecto (Manual o Email)
+const ModalTraspasoSolicitud: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  ficha: Ficha | null;
+  onManual: (ficha: Ficha) => void;
+}> = ({ isOpen, onClose, ficha, onManual }) => {
+  const [email, setEmail] = useState('');
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    if (ficha) {
+      const posibleEmail = (ficha.contraparte || '').includes('@') ? ficha.contraparte : '';
+      setEmail(posibleEmail);
+    }
+  }, [ficha]);
+
+  if (!isOpen || !ficha) return null;
+
+  const handleEnviarCorreo = async () => {
+    if (!email || !email.includes('@')) {
+      showError('Por favor ingresa un correo electrónico válido');
+      return;
+    }
+
+    try {
+      setEnviando(true);
+      const token = 'TOKEN_' + Date.now() + '_' + Math.random().toString(36).substring(2, 10);
+      
+      const payloadSolicitud = {
+        token,
+        email,
+        nombreProyecto: ficha.nombreProyecto,
+        nombreSolicitante: ficha.contraparte || ficha.cliente,
+        area: ficha.cliente || 'General',
+        nombreContraparteCliente: ficha.contraparte || ficha.cliente,
+        nombreResponsableProyecto: ficha.responsable || ficha.lider,
+        descripcionGeneral: ficha.descripcion || '',
+        presupuesto: ficha.venta || 0,
+        fechaInicio: ficha.fechaInicio || new Date().toISOString().split('T')[0],
+        estado: 'Pendiente',
+        observaciones: `Traspasado desde Ficha de Proyecto (Código: ${ficha.codigo})`
+      };
+
+      await api.post('/solicitudes', payloadSolicitud);
+
+      const link = `${window.location.origin}/formulario-solicitud/${token}`;
+      const resEmail = await emailService.sendFormularioEmail(
+        email,
+        ficha.nombreProyecto,
+        payloadSolicitud.nombreSolicitante,
+        payloadSolicitud.area,
+        link
+      );
+
+      if (resEmail.success) {
+        showSuccess('📧 Formulario de Solicitud enviado por correo exitosamente');
+        onClose();
+      } else {
+        showError(resEmail.message || 'Error al enviar el correo');
+      }
+    } catch (err: any) {
+      console.error('Error enviando solicitud por correo:', err);
+      showError(err.response?.data?.message || 'Error al enviar la solicitud por correo');
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+        <div className="flex justify-between items-center mb-4 border-b pb-3">
+          <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+            🚀 Traspasar a Solicitud de Proyecto
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="mb-6 space-y-4">
+          <div className="bg-indigo-50/80 p-3 rounded-lg border border-indigo-100">
+            <p className="text-xs text-indigo-700 font-semibold uppercase tracking-wider">Ficha de Proyecto</p>
+            <p className="text-base font-bold text-gray-900">{ficha.codigo} - {ficha.nombreProyecto}</p>
+            <p className="text-xs text-gray-600">Cliente: {ficha.cliente} {ficha.contraparte ? `| Contraparte: ${ficha.contraparte}` : ''}</p>
+          </div>
+
+          <p className="text-sm text-gray-700 font-medium">
+            ¿Cómo deseas gestionar la Solicitud de Proyecto?
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              onClick={() => {
+                onClose();
+                onManual(ficha);
+              }}
+              className="p-4 border-2 border-indigo-200 hover:border-indigo-600 bg-white hover:bg-indigo-50/50 rounded-xl transition-all flex flex-col items-center text-center group"
+            >
+              <span className="text-3xl mb-2 group-hover:scale-110 transition-transform">✍️</span>
+              <span className="font-bold text-sm text-indigo-900">Rellenar Manualmente</span>
+              <span className="text-xs text-gray-500 mt-1">Completar campos en la plataforma</span>
+            </button>
+
+            <div className="p-4 border-2 border-purple-200 bg-white rounded-xl flex flex-col justify-between">
+              <div className="flex flex-col items-center text-center mb-2">
+                <span className="text-3xl mb-1">📧</span>
+                <span className="font-bold text-sm text-purple-900">Enviar por Correo</span>
+                <span className="text-xs text-gray-500 mt-1">Enviar link al cliente/contraparte</span>
+              </div>
+              <input
+                type="email"
+                placeholder="Ingresa el email..."
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded mb-2 focus:ring-2 focus:ring-purple-500"
+              />
+              <button
+                onClick={handleEnviarCorreo}
+                disabled={enviando}
+                className="w-full py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-bold transition-all disabled:opacity-50"
+              >
+                {enviando ? 'Enviando...' : 'Enviar Email'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end border-t pt-3">
+          <button onClick={onClose} className="px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-xs font-semibold">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Componente de Trazabilidad / Stepper del Ciclo de Vida del Proyecto ("Pedido viajando")
+const ProjectLifecycleStepper: React.FC<{
+  currentStage: string;
+  onStageChange: (stage: string) => void;
+}> = ({ currentStage, onStageChange }) => {
+  const stages = [
+    { id: 'Prospecto', label: '1. Prospecto', sublabel: 'Comercial', icon: '💼' },
+    { id: 'Ficha', label: '2. Ficha', sublabel: 'Proyecto', icon: '📄' },
+    { id: 'Solicitud', label: '3. Solicitud', sublabel: 'Formulario', icon: '📋' },
+    { id: 'Aprobado', label: '4. Resolución', sublabel: 'Final', icon: '🏁' },
+  ];
+
+  const getStageIndex = (stage: string) => {
+    switch (stage) {
+      case 'Prospecto': return 0;
+      case 'Ficha': return 1;
+      case 'Solicitud': return 2;
+      case 'Aprobado': return 3;
+      case 'Rechazado': return 3;
+      default: return 1;
+    }
+  };
+
+  const currentIndex = getStageIndex(currentStage);
+  const isRechazado = currentStage === 'Rechazado';
+
+  return (
+    <div className="bg-gradient-to-r from-slate-50 via-indigo-50/60 to-purple-50 p-3.5 rounded-xl border border-indigo-100 shadow-xs mt-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-base animate-pulse">📦</span>
+          <span className="text-xs font-bold text-gray-800 uppercase tracking-wide">
+            Etapa del Proyecto (Trazabilidad)
+          </span>
+        </div>
+        <span className={`px-2 py-0.5 text-xs font-extrabold rounded-full flex items-center gap-1 shadow-xs ${
+          isRechazado ? 'bg-red-100 text-red-700 border border-red-200' :
+          currentStage === 'Aprobado' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+          'bg-indigo-100 text-indigo-800 border border-indigo-200'
+        }`}>
+          {isRechazado ? '❌ Rechazado' :
+           currentStage === 'Aprobado' ? '✅ Aprobado' :
+           currentStage === 'Solicitud' ? '📋 En Solicitud' :
+           currentStage === 'Prospecto' ? '💼 Prospecto' : '📄 Ficha Creada'}
+        </span>
+      </div>
+
+      {/* Bar & Steps ("Pedido viajando") */}
+      <div className="relative my-3 px-2">
+        {/* Connecting Line */}
+        <div className="absolute top-3.5 left-6 right-6 h-1 bg-gray-200 rounded -z-0">
+          <div 
+            className={`h-1 transition-all duration-500 rounded ${isRechazado ? 'bg-red-500' : 'bg-indigo-600'}`}
+            style={{ width: `${(currentIndex / 3) * 100}%` }}
+          />
+        </div>
+
+        {/* Steps Nodes */}
+        <div className="flex justify-between items-center relative z-10">
+          {stages.map((st, idx) => {
+            const isCompleted = idx < currentIndex;
+            const isCurrent = idx === currentIndex;
+
+            return (
+              <div 
+                key={st.id} 
+                onClick={() => onStageChange(st.id)}
+                className="flex flex-col items-center cursor-pointer group"
+                title={`Cambiar a etapa: ${st.label}`}
+              >
+                {/* Active Moving Marker ("Proyecto aquí") */}
+                <div className="h-5 flex items-center justify-center mb-0.5">
+                  {isCurrent && (
+                    <div className="animate-bounce flex items-center gap-0.5 bg-indigo-600 text-white text-[9px] px-1.5 py-0.5 rounded-full shadow-md font-bold">
+                      <span>🚀</span>
+                      <span>Proyecto</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Node Circle */}
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 transform group-hover:scale-110 shadow-xs ${
+                  isCurrent ? (isRechazado ? 'bg-red-600 text-white ring-4 ring-red-100 scale-110' : 'bg-indigo-600 text-white ring-4 ring-indigo-100 scale-110') :
+                  isCompleted ? 'bg-emerald-500 text-white' :
+                  'bg-white border-2 border-gray-300 text-gray-400'
+                }`}>
+                  {isCompleted ? '✓' : st.icon}
+                </div>
+
+                {/* Step Labels */}
+                <div className="text-center mt-1">
+                  <span className={`block text-[10px] font-bold leading-tight ${
+                    isCurrent ? 'text-indigo-900 font-extrabold' :
+                    isCompleted ? 'text-emerald-700' : 'text-gray-400'
+                  }`}>
+                    {st.label}
+                  </span>
+                  <span className="block text-[9px] text-gray-500 leading-none mt-0.5">
+                    {st.sublabel}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Direct Selector Options / Buttons */}
+      <div className="flex flex-wrap items-center justify-between gap-1 mt-3 pt-2 border-t border-indigo-100/60">
+        <span className="text-[10px] text-gray-500 font-semibold">Seleccionar etapa:</span>
+        <div className="flex gap-1">
+          {stages.map(st => (
+            <button
+              key={st.id}
+              type="button"
+              onClick={() => onStageChange(st.id)}
+              className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
+                currentStage === st.id
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-white text-gray-600 hover:bg-indigo-50 border border-gray-200'
+              }`}
+            >
+              {st.icon} {st.id}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => onStageChange('Rechazado')}
+            className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
+              currentStage === 'Rechazado'
+                ? 'bg-red-600 text-white shadow-xs'
+                : 'bg-white text-red-600 hover:bg-red-50 border border-red-200'
+            }`}
+          >
+            ❌ Rechazado
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Fichas: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -76,6 +362,10 @@ const Fichas: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   
+  // Modal Traspaso a Solicitud
+  const [showModalTraspasoSolicitud, setShowModalTraspasoSolicitud] = useState(false);
+  const [fichaParaTraspaso, setFichaParaTraspaso] = useState<Ficha | null>(null);
+
   // ✅ Nuevo estado para forzar recreación del modal
   const [modalKey, setModalKey] = useState(0);
   // ✅ Estado para controlar si el código fue traspasado directamente desde prospecto
@@ -89,6 +379,7 @@ const Fichas: React.FC = () => {
     liderId: '',
     descripcion: '',
     tecnologias: '',
+    etapaLifecycle: 'Ficha',
     venta: 0,
     hhImplementacion: 0,
     hhPeriodo: 0,
@@ -174,10 +465,56 @@ const Fichas: React.FC = () => {
     return `${prefix}_${numStr}`;
   };
 
-  // ✅ useEffect para convertir solicitud o prospecto a ficha de proyecto
+  // ✅ useEffect para convertir solicitud, prospecto o demanda a ficha de proyecto
   useEffect(() => {
-    if (location.state && (location.state.convertFromSolicitud || location.state.convertFromProspecto)) {
-      if (location.state.convertFromProspecto) {
+    if (location.state && (location.state.convertFromSolicitud || location.state.convertFromProspecto || location.state.convertFromDemanda)) {
+      if (location.state.convertFromDemanda) {
+        const demanda = location.state.convertFromDemanda;
+        console.log('📝 Convirtiendo demanda a ficha de proyecto:', demanda);
+
+        const profResponsable = profesionales.find(p => 
+          p.nombre?.toLowerCase() === (demanda.responsableTI || '').toLowerCase()
+        );
+
+        setErrors({});
+        setTempRecursos([]);
+        setModalMode('add');
+
+        setFormData({
+          codigo: generateCodigo(demanda.proyecto || ''),
+          nombreProyecto: demanda.proyecto || '',
+          cliente: demanda.solicitante || demanda.area || '',
+          lider: demanda.responsableTI || '',
+          liderId: profResponsable ? profResponsable.id : '',
+          descripcion: demanda.observaciones || `Proyecto derivado de Gestión de la Demanda (Área: ${demanda.area || 'General'})`,
+          tecnologias: '',
+          etapaLifecycle: 'Ficha',
+          venta: 0,
+          hhImplementacion: 0,
+          hhPeriodo: 0,
+          recursos: [],
+          recursosIds: [],
+          horasPorRecurso: {},
+          fechaInicio: demanda.planificacionReal || demanda.planificacionEstimada || '',
+          fechaTermino: demanda.fechaEstimadaEntrega || '',
+          contraparte: demanda.solicitante || '',
+          estado: 'No Iniciada',
+          avance: 0,
+          hhPlanificadas: 0,
+          hhReal: 0,
+          alertas: '',
+          acciones: '',
+          responsable: demanda.responsableTI || '',
+          responsableId: profResponsable ? profResponsable.id : '',
+        });
+
+        setModalKey(prev => prev + 1);
+        setTimeout(() => {
+          setShowModal(true);
+        }, 100);
+
+        navigate(location.pathname, { replace: true, state: {} });
+      } else if (location.state.convertFromProspecto) {
         const prospecto = location.state.convertFromProspecto;
         console.log('📝 Convirtiendo prospecto directamente a ficha de proyecto:', prospecto);
 
@@ -198,6 +535,7 @@ const Fichas: React.FC = () => {
           liderId: '',
           descripcion: `Ficha creada directamente desde Prospecto Comercial ${prospecto.codigo || ''}.\nGestor Comercial: ${prospecto.gestorComercial || 'N/A'}\nLínea de Servicio: ${prospecto.lineaServicio || 'N/A'}\nPlazo Estimado: ${prospecto.plazoEstimado || 'N/A'}`,
           tecnologias: '',
+          etapaLifecycle: 'Prospecto',
           venta: prospecto.valorServicio || prospecto.totalIngresos || 0,
           hhImplementacion: 0,
           hhPeriodo: 0,
@@ -249,6 +587,7 @@ const Fichas: React.FC = () => {
           liderId: '',
           descripcion: `Solicitud de proyecto aprobada.\nObjetivo: ${solicitud.objetivoGeneral || ''}\nPresupuesto: $${solicitud.presupuesto || 0}\nResponsable: ${solicitud.nombreResponsableProyecto || ''}`,
           tecnologias: '',
+          etapaLifecycle: 'Solicitud',
           venta: solicitud.presupuesto || 0,
           hhImplementacion: 0,
           hhPeriodo: 0,
@@ -589,6 +928,7 @@ const Fichas: React.FC = () => {
       liderId: '',
       descripcion: '',
       tecnologias: '',
+      etapaLifecycle: 'Ficha',
       venta: 0,
       hhImplementacion: 0,
       hhPeriodo: 0,
@@ -626,6 +966,7 @@ const Fichas: React.FC = () => {
       liderId: profLider ? profLider.id : '',
       descripcion: ficha.descripcion,
       tecnologias: ficha.tecnologias,
+      etapaLifecycle: ficha.etapaLifecycle || (ficha.estado === 'Completada' ? 'Aprobado' : 'Ficha'),
       venta: ficha.venta,
       hhImplementacion: ficha.hhImplementacion,
       hhPeriodo: ficha.hhPeriodo,
@@ -689,6 +1030,15 @@ const Fichas: React.FC = () => {
     }
   };
 
+  const handleAbrirTraspasoSolicitud = (ficha: Ficha) => {
+    setFichaParaTraspaso(ficha);
+    setShowModalTraspasoSolicitud(true);
+  };
+
+  const handleConfirmarManualTraspaso = (ficha: Ficha) => {
+    navigate('/solicitud-proyecto', { state: { convertFromFicha: ficha } });
+  };
+
   // ✅ CORREGIDO: Función handleSubmit completa
   const handleSubmit = async () => {
     if (!validateForm()) return;
@@ -717,6 +1067,10 @@ const Fichas: React.FC = () => {
           
           if (location.state?.convertFromSolicitud) {
             console.log('✅ Ficha creada desde solicitud aprobada');
+          } else {
+            // Abrir modal de traspaso a Solicitud de Proyecto
+            setFichaParaTraspaso(newFicha);
+            setShowModalTraspasoSolicitud(true);
           }
         }
       } else {
@@ -973,9 +1327,16 @@ const Fichas: React.FC = () => {
                             </div>
                           </td>
                           <td className="px-2 sm:px-3 py-2">
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1.5">
                               <button onClick={() => handleEdit(ficha)} className="text-purple-600 hover:text-purple-800 p-1" title="Editar">✏️</button>
                               <button onClick={() => handleDelete(ficha.id)} className="text-red-600 hover:text-red-800 p-1" title="Eliminar">🗑️</button>
+                              <button
+                                onClick={() => handleAbrirTraspasoSolicitud(ficha)}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-0.5 rounded text-xs font-bold transition-all shadow-xs flex items-center gap-1"
+                                title="Traspasar datos a Solicitud de Proyecto"
+                              >
+                                📋 Pasar a Solicitud
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1154,6 +1515,12 @@ const Fichas: React.FC = () => {
                             placeholder="Ej: Python, JavaScript" 
                           />
                         </div>
+
+                        {/* ✅ NUEVO: Seguidor Visual de Etapa del Proyecto / Trazabilidad ("Pedido viajando") */}
+                        <ProjectLifecycleStepper
+                          currentStage={formData.etapaLifecycle || 'Ficha'}
+                          onStageChange={(stage) => setFormData(prev => ({ ...prev, etapaLifecycle: stage }))}
+                        />
                       </div>
 
                       <div className="space-y-3 sm:space-y-4">
@@ -1511,6 +1878,16 @@ const Fichas: React.FC = () => {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Modal para Traspasar Ficha a Solicitud */}
+          {showModalTraspasoSolicitud && (
+            <ModalTraspasoSolicitud
+              isOpen={showModalTraspasoSolicitud}
+              onClose={() => setShowModalTraspasoSolicitud(false)}
+              ficha={fichaParaTraspaso}
+              onManual={handleConfirmarManualTraspaso}
+            />
           )}
     </div>
   );

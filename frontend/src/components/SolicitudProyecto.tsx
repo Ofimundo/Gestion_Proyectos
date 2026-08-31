@@ -1,6 +1,6 @@
 // src/components/SolicitudProyecto.tsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../services/api';
 import emailService from '../services/emailService';
 
@@ -470,6 +470,7 @@ const ModalDetallesSolicitud: React.FC<{
 
 const SolicitudProyecto: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [solicitudes, setSolicitudes] = useState<SolicitudProyecto[]>([]);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -622,6 +623,33 @@ const SolicitudProyecto: React.FC = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
+
+  // ✅ useEffect para convertir Ficha de Proyecto a Solicitud
+  useEffect(() => {
+    if (location.state && location.state.convertFromFicha) {
+      const ficha = location.state.convertFromFicha;
+      console.log('📝 Convirtiendo Ficha de Proyecto a Solicitud de Proyecto:', ficha);
+
+      setEditingId(null);
+      setFormData({
+        nombreProyecto: ficha.nombreProyecto || '',
+        nombreSolicitante: ficha.contraparte || ficha.cliente || '',
+        area: ficha.cliente || '',
+        nombreContraparteCliente: ficha.contraparte || ficha.cliente || '',
+        nombreResponsableProyecto: ficha.responsable || ficha.lider || '',
+        descripcionGeneral: ficha.descripcion || '',
+        presupuesto: ficha.venta || 0,
+        fechaInicio: ficha.fechaInicio || new Date().toISOString().split('T')[0],
+        estado: 'Pendiente',
+        tieneSustentoLegal: false,
+        tieneRequisitoFecha: false,
+        fechaSolicitud: new Date().toISOString().split('T')[0],
+        observaciones: `Traspasado desde Ficha de Proyecto (Código: ${ficha.codigo || ''})`
+      });
+      setMostrarFormulario(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
 
 
 

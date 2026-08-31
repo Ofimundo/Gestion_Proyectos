@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FichaProspectoModel = void 0;
 const database_1 = require("../database/database");
 const mssql_1 = __importDefault(require("mssql"));
+const GestionDemanda_1 = __importDefault(require("./GestionDemanda"));
 class FichaProspectoModel {
     static async create(data) {
         const db = await (0, database_1.getDatabase)();
@@ -55,6 +56,13 @@ class FichaProspectoModel {
         const created = await this.findById(newId);
         if (!created)
             throw new Error('Error al crear la ficha de prospecto');
+        // Sincronización automática a Gestión de la Demanda
+        try {
+            await this.createDemandaFromProspecto(created);
+        }
+        catch (err) {
+            console.error('Error al sincronizar Prospecto a Gestión de la Demanda en creación:', err);
+        }
         return created;
     }
     static async findById(id) {
@@ -125,6 +133,13 @@ class FichaProspectoModel {
         const updated = await this.findById(id);
         if (!updated)
             throw new Error('Ficha de prospecto no encontrada');
+        // Sincronización automática a Gestión de la Demanda
+        try {
+            await this.createDemandaFromProspecto(updated);
+        }
+        catch (err) {
+            console.error('Error al sincronizar Prospecto a Gestión de la Demanda:', err);
+        }
         return updated;
     }
     static async delete(id) {
@@ -132,6 +147,61 @@ class FichaProspectoModel {
         await db.request()
             .input('Id', mssql_1.default.Int, Number(id))
             .query('DELETE FROM FichasProspecto WHERE Id = @Id');
+    }
+    static async createDemandaFromProspecto(prospecto) {
+        const db = await (0, database_1.getDatabase)();
+        const check = await db.request()
+            .input('Proyecto', mssql_1.default.NVarChar, prospecto.nombreProyecto)
+            .query('SELECT Id FROM GestionDemanda WHERE Proyecto = @Proyecto');
+        const isInternalComp = ['OFIMUNDO', 'DREAMTEC', 'GLOBAL HORIZON', 'HIWAY'].includes((prospecto.cliente || '').trim().toUpperCase());
+        const tipoProyecto = (prospecto.tipoCliente === 'Interno' || isInternalComp) ? 'Interno' : 'Externo';
+        const is100Pct = !!(prospecto.estado && prospecto.estado.includes('100%'));
+        if (check.recordset.length === 0) {
+            await GestionDemanda_1.default.create({
+                proyecto: prospecto.nombreProyecto,
+                tipoProyecto: tipoProyecto,
+                prioridad: 'alta',
+                estado: is100Pct ? 'ejecución aprobada' : 'solicitado',
+                etapa: is100Pct ? 'Ficha' : 'Prospecto',
+                area: prospecto.lineaServicio || 'Comercial',
+                planificacionEstimada: prospecto.fechaInicio || prospecto.fechaEstimadaAdjudicacion || new Date().toISOString().split('T')[0],
+                fechaEstimadaEntrega: prospecto.fechaTermino || '',
+                responsableTI: prospecto.gestorComercial || 'Por asignar',
+                solicitante: prospecto.cliente || 'Prospecto comercial',
+                observaciones: `Sincronizado automáticamente desde Prospecto (${prospecto.estado || ''}). Código: ${prospecto.codigo || ''}`
+            });
+            console.log(`✅ Demanda creada automáticamente desde el Prospecto "${prospecto.nombreProyecto}" (${tipoProyecto})`);
+        }
+        else {
+            const demandaId = check.recordset[0].Id;
+            const updatePayload = {
+                tipoProyecto: tipoProyecto,
+                area: prospecto.lineaServicio || 'Comercial',
+                planificacionEstimada: prospecto.fechaInicio || prospecto.fechaEstimadaAdjudicacion || new Date().toISOString().split('T')[0],
+                fechaEstimadaEntrega: prospecto.fechaTermino || '',
+                responsableTI: prospecto.gestorComercial || 'Por asignar',
+                solicitante: prospecto.cliente || 'Prospecto comercial',
+                observaciones: `Actualizado desde Prospecto (${prospecto.estado || ''}). Código: ${prospecto.codigo || ''}`
+            };
+            if (is100Pct) {
+                updatePayload.estado = 'ejecución aprobada';
+            }
+            await GestionDemanda_1.default.update(demandaId, updatePayload);
+            console.log(`✅ Demanda id ${demandaId} actualizada desde Prospecto "${prospecto.nombreProyecto}"`);
+        }
+    }
+    static async syncAllToDemanda() {
+        try {
+            const prospectos = await this.findAll();
+            for (const p of prospectos) {
+                if (p.nombreProyecto) {
+                    await this.createDemandaFromProspecto(p);
+                }
+            }
+        }
+        catch (err) {
+            console.error('Error al sincronizar todos los prospectos a Gestión de la Demanda:', err);
+        }
     }
     static parseFichaProspecto(row) {
         let estimacionesParsed = {};

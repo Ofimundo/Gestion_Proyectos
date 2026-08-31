@@ -14,6 +14,7 @@ const fichasProspecto_1 = __importDefault(require("./fichasProspecto"));
 const solicitudes_1 = __importDefault(require("./solicitudes"));
 const asignaciones_1 = __importDefault(require("./asignaciones"));
 const email_1 = __importDefault(require("./email"));
+const gestionDemanda_1 = __importDefault(require("./gestionDemanda"));
 const router = (0, express_1.Router)();
 exports.router = router;
 console.log('📋 Registrando rutas...');
@@ -42,6 +43,10 @@ console.log('   ✅ /solicitudes registrada');
 // Asignaciones
 router.use('/asignaciones', asignaciones_1.default);
 console.log('   ✅ /asignaciones registrada');
+// Gestión de la Demanda
+router.use('/demanda', gestionDemanda_1.default);
+router.use('/gestion-demanda', gestionDemanda_1.default);
+console.log('   ✅ /demanda y /gestion-demanda registradas');
 // Softland
 const softland_1 = __importDefault(require("./softland"));
 router.use('/softland', softland_1.default);

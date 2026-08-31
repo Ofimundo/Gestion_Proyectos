@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
+import demandaService from '../services/demandaService';
 import { showSuccess, showError, showWarning } from './Toast';
 
 interface FichaProspecto {
@@ -381,6 +382,8 @@ const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject })
         const res = await api.post('/fichas-prospecto', formData);
         if (res.data.success) {
           showSuccess('Ficha de prospecto creada exitosamente');
+          // Sincronizar automáticamente a Gestión de la Demanda (interno o externo)
+          await demandaService.syncDemandaFromProspecto(res.data.data);
           setShowModal(false);
           loadProspectos();
         } else {
@@ -390,11 +393,10 @@ const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject })
         const res = await api.put(`/fichas-prospecto/${currentId}`, formData);
         if (res.data.success) {
           showSuccess('Ficha de prospecto actualizada exitosamente');
+          // Sincronizar automáticamente a Gestión de la Demanda (interno o externo)
+          await demandaService.syncDemandaFromProspecto(res.data.data);
           setShowModal(false);
           loadProspectos();
-          if (formData.estado === '100% Aceptada por cliente' && onConvertToProject) {
-            onConvertToProject(res.data.data);
-          }
         } else {
           showError('No se pudo actualizar la ficha de prospecto');
         }
@@ -449,11 +451,10 @@ const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject })
       });
       if (res.data.success) {
         showSuccess('Estado comercial actualizado correctamente');
+        // Sincronizar automáticamente a Gestión de la Demanda
+        await demandaService.syncDemandaFromProspecto(res.data.data);
         setShowQuickStatusModal(false);
         loadProspectos();
-        if (newQuickStatus === '100% Aceptada por cliente' && onConvertToProject) {
-          onConvertToProject(res.data.data);
-        }
       } else {
         showError('No se pudo actualizar el estado');
       }

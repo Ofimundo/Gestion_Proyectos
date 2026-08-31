@@ -29,6 +29,8 @@ export declare class FichaProspectoModel {
     static findAll(): Promise<FichaProspecto[]>;
     static update(id: string | number, data: Partial<FichaProspecto>): Promise<FichaProspecto>;
     static delete(id: string | number): Promise<void>;
+    static createDemandaFromProspecto(prospecto: FichaProspecto): Promise<void>;
+    static syncAllToDemanda(): Promise<void>;
     private static parseFichaProspecto;
 }
 export default FichaProspectoModel;

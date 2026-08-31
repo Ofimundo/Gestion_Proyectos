@@ -8,6 +8,7 @@ import fichasProspectoRoutes from './fichasProspecto';
 import solicitudesRoutes from './solicitudes';
 import asignacionesRoutes from './asignaciones';
 import emailRoutes from './email';
+import gestionDemandaRoutes from './gestionDemanda';
 
 const router = Router();
 
@@ -45,6 +46,11 @@ console.log('   ✅ /solicitudes registrada');
 // Asignaciones
 router.use('/asignaciones', asignacionesRoutes);
 console.log('   ✅ /asignaciones registrada');
+
+// Gestión de la Demanda
+router.use('/demanda', gestionDemandaRoutes);
+router.use('/gestion-demanda', gestionDemandaRoutes);
+console.log('   ✅ /demanda y /gestion-demanda registradas');
 
 // Softland
 import softlandRoutes from './softland';

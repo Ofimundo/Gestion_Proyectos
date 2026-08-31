@@ -181,6 +181,17 @@ const Dashboard: React.FC = () => {
       textColor: 'text-teal-600',
       route: '/dashboard-profesional',
       stats: `${stats.profesionalesActivos} profesionales`
+    },
+    {
+      id: 7,
+      title: 'Gestión de la Demanda',
+      description: 'Recepción y seguimiento de proyectos internos y externos',
+      icon: '📥',
+      color: 'from-sky-500 to-indigo-600',
+      bgColor: 'bg-sky-50',
+      textColor: 'text-sky-700',
+      route: '/gestion-demanda',
+      stats: 'Proyectos internos y externos'
     }
   ];
 

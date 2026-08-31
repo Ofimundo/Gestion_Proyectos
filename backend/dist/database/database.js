@@ -103,6 +103,31 @@ async function initializeDatabase() {
             ALTER TABLE FichasProspecto ADD TipoCliente NVARCHAR(50) NULL;
         `);
         console.log('✅ Estructura de tabla FichasProspecto verificada.');
+        // Crear tabla GestionDemanda si no existe
+        await db.request().query(`
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'GestionDemanda')
+            BEGIN
+                CREATE TABLE GestionDemanda (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    Proyecto NVARCHAR(255) NOT NULL,
+                    TipoProyecto NVARCHAR(50) NOT NULL DEFAULT 'Interno',
+                    Prioridad NVARCHAR(50) NOT NULL DEFAULT 'media',
+                    Estado NVARCHAR(50) NOT NULL DEFAULT 'solicitado',
+                    Etapa NVARCHAR(100) NULL,
+                    Area NVARCHAR(100) NULL,
+                    PlanificacionEstimada NVARCHAR(100) NULL,
+                    PlanificacionReal NVARCHAR(100) NULL,
+                    FechaEstimadaEntrega DATE NULL,
+                    FechaEntregaReal DATE NULL,
+                    ResponsableTI NVARCHAR(255) NULL,
+                    Solicitante NVARCHAR(255) NULL,
+                    Observaciones NVARCHAR(MAX) NULL,
+                    FechaCreacion DATETIME DEFAULT GETDATE(),
+                    FechaActualizacion DATETIME NULL
+                );
+            END
+        `);
+        console.log('✅ Estructura de tabla GestionDemanda verificada.');
     }
     catch (error) {
         console.warn('⚠️  Error al inicializar la base de datos SQL Server:', error.message);
