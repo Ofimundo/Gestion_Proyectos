@@ -118,14 +118,14 @@ const Dashboard: React.FC = () => {
   const modules = [
     {
       id: 1,
-      title: 'Profesionales',
-      description: 'Gestión de profesionales del equipo',
+      title: 'Colaboradores',
+      description: 'Gestión de colaboradores del equipo',
       icon: '👥',
       color: 'from-blue-500 to-cyan-500',
       bgColor: 'bg-blue-50',
       textColor: 'text-blue-600',
       route: '/profesionales',
-      stats: `${stats.profesionalesActivos} profesionales activos`
+      stats: `${stats.profesionalesActivos} colaboradores activos`
     },
     {
       id: 2,
@@ -173,14 +173,14 @@ const Dashboard: React.FC = () => {
     },
     {
       id: 6,
-      title: 'Dashboard Profesional',
-      description: 'Proyectos y horas por profesional',
+      title: 'Dashboard Colaboradores',
+      description: 'Proyectos y horas por colaborador',
       icon: '👨‍💻',
       color: 'from-teal-500 to-cyan-500',
       bgColor: 'bg-teal-50',
       textColor: 'text-teal-600',
       route: '/dashboard-profesional',
-      stats: `${stats.profesionalesActivos} profesionales`
+      stats: `${stats.profesionalesActivos} colaboradores`
     },
     {
       id: 7,
@@ -468,7 +468,7 @@ const Dashboard: React.FC = () => {
           <div className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 md:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-600">Profesionales</p>
+                <p className="text-xs text-gray-600">Colaboradores</p>
                 <p className="text-base sm:text-lg md:text-2xl font-bold text-gray-900">{stats.profesionalesActivos}</p>
               </div>
               <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-purple-100 rounded-lg flex items-center justify-center">

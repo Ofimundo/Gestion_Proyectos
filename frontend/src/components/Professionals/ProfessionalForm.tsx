@@ -103,7 +103,7 @@ const ProfessionalForm: React.FC<ProfessionalFormProps> = ({
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 max-w-2xl mx-auto">
       <h2 className="text-2xl font-bold mb-6">
-        {initialData || professionalId ? 'Editar Profesional' : 'Nuevo Profesional'}
+        {initialData || professionalId ? 'Editar Colaborador' : 'Nuevo Colaborador'}
       </h2>
 
       {error && (

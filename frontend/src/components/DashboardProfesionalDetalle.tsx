@@ -254,7 +254,7 @@ const DashboardProfesionalDetalle: React.FC = () => {
                 </svg>
                 Volver
               </button>
-              <h1 className="text-lg sm:text-xl font-bold text-gray-800">Dashboard por Profesional</h1>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-800">Dashboard por Colaborador</h1>
             </div>
             <div className="flex gap-2">
               <button
@@ -276,13 +276,13 @@ const DashboardProfesionalDetalle: React.FC = () => {
         <div className="bg-white rounded-lg shadow-md p-4 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Seleccionar Profesional</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Seleccionar Colaborador</label>
               <select
                 value={profesionalSeleccionado}
                 onChange={(e) => setProfesionalSeleccionado(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="todos">Todos los profesionales</option>
+                <option value="todos">Todos los colaboradores</option>
                 {profesionalesActivos.map(prof => (
                   <option key={prof.id} value={prof.id}>{prof.nombre} - {prof.cargo}</option>
                 ))}
@@ -319,7 +319,7 @@ const DashboardProfesionalDetalle: React.FC = () => {
         {/* Resumen General */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4">
-            {profesionalSeleccionado === 'todos' ? '📊 Resumen General de Profesionales' : `📊 Resumen de ${profesionalData?.nombre}`}
+            {profesionalSeleccionado === 'todos' ? '📊 Resumen General de Colaboradores' : `📊 Resumen de ${profesionalData?.nombre}`}
           </h2>
           
           {profesionalSeleccionado === 'todos' ? (
@@ -327,7 +327,7 @@ const DashboardProfesionalDetalle: React.FC = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Profesional</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Colaborador</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cargo</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Horas Asignadas</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Horas Disponibles</th>
@@ -437,7 +437,7 @@ const DashboardProfesionalDetalle: React.FC = () => {
         {/* Lista de Proyectos Asignados */}
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
           <h2 className="text-xl font-bold text-gray-800 p-6 pb-0">
-            {profesionalSeleccionado === 'todos' ? '📋 Proyectos Asignados por Profesional' : `📋 Proyectos Asignados a ${profesionalData?.nombre}`}
+            {profesionalSeleccionado === 'todos' ? '📋 Proyectos Asignados por Colaborador' : `📋 Proyectos Asignados a ${profesionalData?.nombre}`}
           </h2>
           
           {Object.keys(proyectosAsignadosMap).length === 0 ? (

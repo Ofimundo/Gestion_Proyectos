@@ -179,7 +179,7 @@ const ProjectDashboard: React.FC = () => {
               </svg>
             </div>
             <div>
-              <h4 className="font-semibold text-gray-800">Profesionales</h4>
+              <h4 className="font-semibold text-gray-800">Colaboradores</h4>
               <p className="text-sm text-gray-500">Gestionar recursos humanos</p>
             </div>
           </div>

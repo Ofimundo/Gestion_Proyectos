@@ -509,7 +509,7 @@ const CalendarView: React.FC<{ profesionales: Profesional[]; fechaActual: Date; 
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Profesional</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Colaborador</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cargo</th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Horas del día</th>
               </tr>
@@ -552,7 +552,7 @@ const CalendarView: React.FC<{ profesionales: Profesional[]; fechaActual: Date; 
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gradient-to-r from-indigo-600 to-purple-600">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase">Profesional</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase">Colaborador</th>
               {semana.map((dia, idx) => (
                 <th key={idx} className="px-3 py-3 text-center text-xs font-medium text-white uppercase">
                   {diasSemana[idx]}<br />
@@ -890,7 +890,7 @@ const CalendarView: React.FC<{ profesionales: Profesional[]; fechaActual: Date; 
           onChange={(e) => setSelectedProfesional(e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
-          <option value="todos">Todos los profesionales</option>
+          <option value="todos">Todos los colaboradores</option>
           {profesionales.filter(p => p.activo).map(prof => (
             <option key={prof.id} value={prof.id}>{prof.nombre}</option>
           ))}
@@ -1345,7 +1345,7 @@ const Profesionales: React.FC = () => {
       [`Ley vigente: ${leyTexto}`, '', '', '', '', '', '', '', '', '', '', '', ''],
       [`Cálculo con feriados: ${incluirFeriados ? 'EXCLUYENDO feriados (no se trabajan)' : 'INCLUYENDO feriados (se trabajan)'}`, '', '', '', '', '', '', '', '', '', '', '', ''],
       [''],
-      ['PROFESIONAL', 'CARGO', ...meses, 'TOTAL ANUAL']
+      ['COLABORADOR', 'CARGO', ...meses, 'TOTAL ANUAL']
     ];
     
     datos.forEach(row => {
@@ -1459,7 +1459,7 @@ const Profesionales: React.FC = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
               </button>
-              <h1 className="text-xl font-semibold text-gray-800">Gestión de Profesionales</h1>
+              <h1 className="text-xl font-semibold text-gray-800">Gestión de Colaboradores</h1>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -1497,7 +1497,7 @@ const Profesionales: React.FC = () => {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
-                  Nuevo Profesional
+                  Nuevo Colaborador
                 </button>
               )}
             </div>
@@ -1528,7 +1528,7 @@ const Profesionales: React.FC = () => {
               <svg className="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
-              Profesionales
+              Colaboradores
             </button>
             <button
               onClick={() => setActiveTab('reporte')}
@@ -1583,7 +1583,7 @@ const Profesionales: React.FC = () => {
                     {profesionales.length === 0 ? (
                       <tr>
                         <td colSpan={9} className="px-6 py-8 text-center text-gray-400">
-                          No hay profesionales registrados. Haz clic en "Nuevo Profesional" para agregar.
+                          No hay colaboradores registrados. Haz clic en "Nuevo Colaborador" para agregar.
                         </td>
                       </tr>
                     ) : (
@@ -1726,11 +1726,11 @@ const Profesionales: React.FC = () => {
             {profesionales.length > 0 && (
               <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white rounded-lg shadow p-4">
-                  <h3 className="text-sm font-medium text-gray-500">Total Profesionales</h3>
+                  <h3 className="text-sm font-medium text-gray-500">Total Colaboradores</h3>
                   <p className="text-2xl font-bold text-gray-900">{profesionales.length}</p>
                 </div>
                 <div className="bg-white rounded-lg shadow p-4">
-                  <h3 className="text-sm font-medium text-gray-500">Profesionales Activos</h3>
+                  <h3 className="text-sm font-medium text-gray-500">Colaboradores Activos</h3>
                   <p className="text-2xl font-bold text-green-600">{profesionales.filter(p => p.activo).length}</p>
                 </div>
                 <div className="bg-white rounded-lg shadow p-4">
@@ -1797,7 +1797,7 @@ const Profesionales: React.FC = () => {
                   <thead className="bg-gradient-to-r from-indigo-600 to-purple-600">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider sticky left-0 bg-gradient-to-r from-indigo-600 to-purple-600">
-                        Profesional
+                        Colaborador
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
                         Cargo
@@ -1816,7 +1816,7 @@ const Profesionales: React.FC = () => {
                     {datosReporte.length === 0 ? (
                       <tr>
                         <td colSpan={14} className="px-6 py-8 text-center text-gray-400">
-                          No hay profesionales activos para mostrar el reporte
+                          No hay colaboradores activos para mostrar el reporte
                         </td>
                       </tr>
                     ) : (
@@ -2003,7 +2003,7 @@ const Profesionales: React.FC = () => {
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
               <div className="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
                 <h2 className="text-xl font-semibold text-gray-800">
-                  {editingProfesional ? 'Editar Profesional' : 'Nuevo Profesional'}
+                  {editingProfesional ? 'Editar Colaborador' : 'Nuevo Colaborador'}
                 </h2>
               </div>
               <form onSubmit={handleSubmit} className="p-6 max-h-[80vh] overflow-y-auto">
@@ -2032,11 +2032,7 @@ const Profesionales: React.FC = () => {
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         required
-                        disabled={!!editingProfesional}
                       />
-                      {editingProfesional && (
-                        <p className="text-xs text-gray-400 mt-1">El email no se puede modificar</p>
-                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">

@@ -78,7 +78,7 @@ const ProfessionalList: React.FC<ProfessionalListProps> = ({
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Profesionales</h2>
+        <h2 className="text-2xl font-bold text-gray-800">Colaboradores</h2>
         <button
           onClick={onNewProfessional}
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
@@ -86,7 +86,7 @@ const ProfessionalList: React.FC<ProfessionalListProps> = ({
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          Nuevo Profesional
+          Nuevo Colaborador
         </button>
       </div>
 

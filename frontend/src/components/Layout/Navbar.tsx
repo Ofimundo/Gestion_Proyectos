@@ -26,7 +26,7 @@ const Navbar: React.FC<NavbarProps> = ({
     switch (currentView) {
       case 'dashboard': return 'Dashboard';
       case 'projects': return 'Gestión de Proyectos';
-      case 'professionals': return 'Directorio de Profesionales';
+      case 'professionals': return 'Directorio de Colaboradores';
       case 'reports': return 'Reportes y Estadísticas';
       case 'projectForm': return 'Nuevo Proyecto';
       case 'professionalForm': return 'Formulario de Profesional';
