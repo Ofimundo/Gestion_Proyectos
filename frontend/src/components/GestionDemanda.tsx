@@ -211,7 +211,6 @@ const GestionDemanda: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      await demandaService.syncAllProspectosToDemanda();
       const data = await demandaService.getAll();
       setDemandas(data);
     } catch (err: any) {

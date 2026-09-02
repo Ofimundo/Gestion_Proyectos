@@ -221,16 +221,10 @@ export const demandaService = {
 
   syncAllProspectosToDemanda: async (): Promise<void> => {
     try {
-      const response = await api.get('/fichas-prospecto');
-      if (response.data && response.data.success && Array.isArray(response.data.data)) {
-        for (const p of response.data.data) {
-          if (p.nombreProyecto) {
-            await demandaService.syncDemandaFromProspecto(p);
-          }
-        }
-      }
+      // El backend sincroniza automáticamente los prospectos en una sola consulta optimizada
+      await demandaService.getAll();
     } catch (e) {
-      console.warn('Error al sincronizar prospectos existentes en cliente:', e);
+      console.warn('Error al sincronizar prospectos:', e);
     }
   },
 

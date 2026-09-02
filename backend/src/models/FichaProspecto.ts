@@ -227,12 +227,46 @@ export class FichaProspectoModel {
 
     public static async syncAllToDemanda(): Promise<void> {
         try {
-            const prospectos = await this.findAll();
-            for (const p of prospectos) {
-                if (p.nombreProyecto) {
-                    await this.createDemandaFromProspecto(p);
-                }
-            }
+            const db = await getDatabase();
+            await db.request().query(`
+                INSERT INTO GestionDemanda (
+                    Proyecto, TipoProyecto, Prioridad, Estado, Etapa, Area,
+                    PlanificacionEstimada, FechaEstimadaEntrega, ResponsableTI, Solicitante, Observaciones, FechaCreacion
+                )
+                SELECT 
+                    fp.NombreProyecto,
+                    CASE 
+                        WHEN UPPER(LTRIM(RTRIM(ISNULL(fp.Cliente, '')))) IN ('OFIMUNDO', 'DREAMTEC', 'GLOBAL HORIZON', 'HIWAY') OR fp.TipoCliente = 'Interno' THEN 'Interno'
+                        ELSE 'Externo'
+                    END AS TipoProyecto,
+                    'alta' AS Prioridad,
+                    CASE 
+                        WHEN fp.Estado LIKE '%100%%' THEN 'ejecución aprobada' 
+                        ELSE 'solicitado' 
+                    END AS Estado,
+                    CASE 
+                        WHEN fp.Estado LIKE '%100%%' THEN 'Ficha' 
+                        ELSE 'Prospecto' 
+                    END AS Etapa,
+                    COALESCE(NULLIF(fp.LineaServicio, ''), 'Comercial') AS Area,
+                    COALESCE(
+                        NULLIF(CONVERT(VARCHAR(10), fp.FechaInicio, 120), ''), 
+                        NULLIF(CONVERT(VARCHAR(10), fp.FechaEstimadaAdjudicacion, 120), ''), 
+                        CONVERT(VARCHAR(10), GETDATE(), 120)
+                    ) AS PlanificacionEstimada,
+                    fp.FechaTermino AS FechaEstimadaEntrega,
+                    COALESCE(NULLIF(fp.GestorComercial, ''), 'Por asignar') AS ResponsableTI,
+                    COALESCE(NULLIF(fp.Cliente, ''), 'Prospecto comercial') AS Solicitante,
+                    CONCAT('Sincronizado automáticamente desde Prospecto (', ISNULL(fp.Estado, ''), '). Código: ', ISNULL(fp.Codigo, '')) AS Observaciones,
+                    GETDATE() AS FechaCreacion
+                FROM FichasProspecto fp
+                WHERE fp.NombreProyecto IS NOT NULL 
+                  AND LTRIM(RTRIM(fp.NombreProyecto)) <> ''
+                  AND NOT EXISTS (
+                      SELECT 1 FROM GestionDemanda gd 
+                      WHERE LOWER(LTRIM(RTRIM(gd.Proyecto))) = LOWER(LTRIM(RTRIM(fp.NombreProyecto)))
+                  );
+            `);
         } catch (err) {
             console.error('Error al sincronizar todos los prospectos a Gestión de la Demanda:', err);
         }
