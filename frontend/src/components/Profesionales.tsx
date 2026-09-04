@@ -13,13 +13,13 @@ interface Profesional {
   horasDisponibles: number;
   horasAsignadasMes?: { [mes: string]: number };
   horario: {
-    lunes: { activo: boolean; entrada: string; salida: string };
-    martes: { activo: boolean; entrada: string; salida: string };
-    miercoles: { activo: boolean; entrada: string; salida: string };
-    jueves: { activo: boolean; entrada: string; salida: string };
-    viernes: { activo: boolean; entrada: string; salida: string };
-    sabado: { activo: boolean; entrada: string; salida: string };
-    domingo: { activo: boolean; entrada: string; salida: string };
+    lunes: { activo: boolean; entrada: string; salida: string; colacionMinutos?: number };
+    martes: { activo: boolean; entrada: string; salida: string; colacionMinutos?: number };
+    miercoles: { activo: boolean; entrada: string; salida: string; colacionMinutos?: number };
+    jueves: { activo: boolean; entrada: string; salida: string; colacionMinutos?: number };
+    viernes: { activo: boolean; entrada: string; salida: string; colacionMinutos?: number };
+    sabado: { activo: boolean; entrada: string; salida: string; colacionMinutos?: number };
+    domingo: { activo: boolean; entrada: string; salida: string; colacionMinutos?: number };
   };
   proyectosAsignados?: ProyectoAsignado[];
 }
@@ -202,6 +202,20 @@ const getLeyHorasTexto = (fecha: Date): string => {
   if (fechaLey < fecha42) return "44 horas semanales (Ley 40 horas - Fase 1: desde 26 abril 2024)";
   if (fechaLey < fecha40) return "42 horas semanales (Ley 40 horas - Fase 2: desde 26 abril 2026)";
   return "40 horas semanales (Ley 40 horas - Fase 3: desde 26 abril 2028)";
+};
+
+const calcularHorasDia = (entrada: string, salida: string): number => {
+  if (!entrada || !salida) return 0;
+  const [horaEntrada, minutoEntrada] = entrada.split(':').map(Number);
+  const [horaSalida, minutoSalida] = salida.split(':').map(Number);
+  if (isNaN(horaEntrada) || isNaN(minutoEntrada) || isNaN(horaSalida) || isNaN(minutoSalida)) return 0;
+  let horas = horaSalida - horaEntrada;
+  let minutos = minutoSalida - minutoEntrada;
+  if (minutos < 0) {
+    horas--;
+    minutos += 60;
+  }
+  return Math.max(0, horas + (minutos / 60));
 };
 
 const NotificationToast: React.FC<{ notification: Notification; onClose: (id: number) => void }> = ({ notification, onClose }) => {
@@ -463,15 +477,7 @@ const CalendarView: React.FC<{ profesionales: Profesional[]; fechaActual: Date; 
     
     const horarioDia = profesional.horario[diaKey as keyof typeof profesional.horario];
     if (horarioDia && horarioDia.activo) {
-      const [horaEntrada, minutoEntrada] = horarioDia.entrada.split(':').map(Number);
-      const [horaSalida, minutoSalida] = horarioDia.salida.split(':').map(Number);
-      let horas = horaSalida - horaEntrada;
-      let minutos = minutoSalida - minutoEntrada;
-      if (minutos < 0) {
-        horas--;
-        minutos += 60;
-      }
-      return horas + (minutos / 60);
+      return calcularHorasDia(horarioDia.entrada, horarioDia.salida);
     }
     return 0;
   };
@@ -927,20 +933,22 @@ const Profesionales: React.FC = () => {
     profesionalNombre: '', 
     proyectos: [] 
   });
+  const defaultHorario = {
+    lunes: { activo: true, entrada: '09:00', salida: '17:00' },
+    martes: { activo: true, entrada: '09:00', salida: '17:00' },
+    miercoles: { activo: true, entrada: '09:00', salida: '17:00' },
+    jueves: { activo: true, entrada: '09:00', salida: '17:00' },
+    viernes: { activo: true, entrada: '09:00', salida: '17:00' },
+    sabado: { activo: false, entrada: '09:00', salida: '17:00' },
+    domingo: { activo: false, entrada: '09:00', salida: '17:00' }
+  };
+
   const [formData, setFormData] = useState({
     nombre: '',
     email: '',
     cargo: '',
-    horasDisponibles: 168,
-    horario: {
-      lunes: { activo: true, entrada: '09:00', salida: '18:00' },
-      martes: { activo: true, entrada: '09:00', salida: '18:00' },
-      miercoles: { activo: true, entrada: '09:00', salida: '18:00' },
-      jueves: { activo: true, entrada: '09:00', salida: '18:00' },
-      viernes: { activo: true, entrada: '09:00', salida: '18:00' },
-      sabado: { activo: false, entrada: '09:00', salida: '13:00' },
-      domingo: { activo: false, entrada: '09:00', salida: '13:00' }
-    }
+    horasDisponibles: 173,
+    horario: defaultHorario
   });
 
   const meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 
@@ -959,47 +967,15 @@ const Profesionales: React.FC = () => {
     setNotifications(prev => prev.filter(notif => notif.id !== id));
   };
 
-  const calcularHorasDia = (entrada: string, salida: string): number => {
-    const [horaEntrada, minutoEntrada] = entrada.split(':').map(Number);
-    const [horaSalida, minutoSalida] = salida.split(':').map(Number);
-    let horas = horaSalida - horaEntrada;
-    let minutos = minutoSalida - minutoEntrada;
-    if (minutos < 0) {
-      horas--;
-      minutos += 60;
-    }
-    return horas + (minutos / 60);
-  };
-
   const calcularHorasSemanales = (horario: any): number => {
     let totalHoras = 0;
     const dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
     dias.forEach(dia => {
-      if (horario[dia].activo) {
+      if (horario[dia] && horario[dia].activo) {
         totalHoras += calcularHorasDia(horario[dia].entrada, horario[dia].salida);
       }
     });
     return totalHoras;
-  };
-
-  const actualizarHorasDisponibles = (horario: any) => {
-    const horasPorSemana = calcularHorasSemanales(horario);
-    const horasPorMes = horasPorSemana * 4.33;
-    setFormData(prev => ({
-      ...prev,
-      horasDisponibles: Math.round(horasPorMes)
-    }));
-  };
-
-  const handleHorarioChange = (dia: string, campo: string, valor: any) => {
-    const nuevoHorario = { ...formData.horario };
-    if (campo === 'activo') {
-      nuevoHorario[dia as keyof typeof nuevoHorario].activo = valor;
-    } else {
-      nuevoHorario[dia as keyof typeof nuevoHorario][campo as 'entrada' | 'salida'] = valor;
-    }
-    setFormData({ ...formData, horario: nuevoHorario });
-    actualizarHorasDisponibles(nuevoHorario);
   };
 
   const getDiasLaborablesMes = (ano: number, mes: number, excluirFeriados: boolean = true): Date[] => {
@@ -1070,23 +1046,35 @@ const Profesionales: React.FC = () => {
       const profesionalesResponse = await api.get('/profesionales');
       if (profesionalesResponse.data.success) {
         const profesionalesData = profesionalesResponse.data.data || [];
-        // Asegurar que los profesionales tengan la estructura de horario
+        // Asegurar que los profesionales tengan 40 horas semanales por defecto (09:00 a 17:00 L-V)
         const profesionalesConHorario = profesionalesData.map((prof: any) => {
-          if (!prof.horario) {
-            return {
-              ...prof,
-              horario: {
-                lunes: { activo: true, entrada: '09:00', salida: '18:00' },
-                martes: { activo: true, entrada: '09:00', salida: '18:00' },
-                miercoles: { activo: true, entrada: '09:00', salida: '18:00' },
-                jueves: { activo: true, entrada: '09:00', salida: '18:00' },
-                viernes: { activo: true, entrada: '09:00', salida: '18:00' },
-                sabado: { activo: false, entrada: '09:00', salida: '13:00' },
-                domingo: { activo: false, entrada: '09:00', salida: '13:00' }
-              }
-            };
+          const defaultStandardHorario = {
+            lunes: { activo: true, entrada: '09:00', salida: '17:00' },
+            martes: { activo: true, entrada: '09:00', salida: '17:00' },
+            miercoles: { activo: true, entrada: '09:00', salida: '17:00' },
+            jueves: { activo: true, entrada: '09:00', salida: '17:00' },
+            viernes: { activo: true, entrada: '09:00', salida: '17:00' },
+            sabado: { activo: false, entrada: '09:00', salida: '17:00' },
+            domingo: { activo: false, entrada: '09:00', salida: '17:00' }
+          };
+
+          let finalHorario = defaultStandardHorario;
+          if (prof.horario) {
+            const horasSemanalesActuales = calcularHorasSemanales(prof.horario);
+            // Si el horario guardado es menor o igual a 40 y mayor a 0, se respeta; si excede 40 o no tiene horario, se ajusta a 40 horas
+            if (horasSemanalesActuales <= 40.0 && horasSemanalesActuales > 0) {
+              finalHorario = prof.horario;
+            }
           }
-          return prof;
+
+          const horasSemanalesFinales = calcularHorasSemanales(finalHorario);
+          const horasMesFinales = Math.round(horasSemanalesFinales * 4.33);
+
+          return {
+            ...prof,
+            horasDisponibles: horasMesFinales,
+            horario: finalHorario
+          };
         });
         setProfesionales(profesionalesConHorario);
       }
@@ -1232,16 +1220,8 @@ const Profesionales: React.FC = () => {
       nombre: '',
       email: '',
       cargo: '',
-      horasDisponibles: 168,
-      horario: {
-        lunes: { activo: true, entrada: '09:00', salida: '18:00' },
-        martes: { activo: true, entrada: '09:00', salida: '18:00' },
-        miercoles: { activo: true, entrada: '09:00', salida: '18:00' },
-        jueves: { activo: true, entrada: '09:00', salida: '18:00' },
-        viernes: { activo: true, entrada: '09:00', salida: '18:00' },
-        sabado: { activo: false, entrada: '09:00', salida: '13:00' },
-        domingo: { activo: false, entrada: '09:00', salida: '13:00' }
-      }
+      horasDisponibles: 173,
+      horario: defaultHorario
     });
     setEditingProfesional(null);
     setShowModal(false);
@@ -1479,16 +1459,8 @@ const Profesionales: React.FC = () => {
                       nombre: '',
                       email: '',
                       cargo: '',
-                      horasDisponibles: 168,
-                      horario: {
-                        lunes: { activo: true, entrada: '09:00', salida: '18:00' },
-                        martes: { activo: true, entrada: '09:00', salida: '18:00' },
-                        miercoles: { activo: true, entrada: '09:00', salida: '18:00' },
-                        jueves: { activo: true, entrada: '09:00', salida: '18:00' },
-                        viernes: { activo: true, entrada: '09:00', salida: '18:00' },
-                        sabado: { activo: false, entrada: '09:00', salida: '13:00' },
-                        domingo: { activo: false, entrada: '09:00', salida: '13:00' }
-                      }
+                      horasDisponibles: 173,
+                      horario: defaultHorario
                     });
                     setShowModal(true);
                   }}
@@ -2000,130 +1972,80 @@ const Profesionales: React.FC = () => {
 
         {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
-              <div className="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full my-8">
+              <div className="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-800">
                   {editingProfesional ? 'Editar Colaborador' : 'Nuevo Colaborador'}
                 </h2>
+                <button
+                  onClick={() => {
+                    setShowModal(false);
+                    setEditingProfesional(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
-              <form onSubmit={handleSubmit} className="p-6 max-h-[80vh] overflow-y-auto">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-gray-800 mb-3">Información Personal</h3>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Nombre completo *
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.nombre}
-                        onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Email *
-                      </label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Cargo *
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.cargo}
-                        onChange={(e) => setFormData({ ...formData, cargo: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        required
-                        placeholder="Ej: Desarrollador RPA, Analista, etc."
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Horas disponibles por mes
-                      </label>
-                      <input
-                        type="number"
-                        value={formData.horasDisponibles}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
-                        disabled
-                      />
-                      <p className="text-xs text-gray-400 mt-1">
-                        Calculado automáticamente según el horario configurado
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-800 mb-3">Configuración de Horario</h3>
-                    <div className="bg-blue-50 p-3 rounded-lg mb-3 text-xs text-blue-700">
-                      ⚠️ <strong>{getLeyHorasTexto(new Date())}</strong><br />
-                      Puedes configurar el horario que desees. Si excedes el límite legal, se mostrará una advertencia.
-                    </div>
-                    <div className="space-y-3">
-                      {['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'].map((dia) => (
-                        <div key={dia} className="border rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <label className="font-medium text-gray-700 capitalize">{dia}</label>
-                            <label className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={formData.horario[dia as keyof typeof formData.horario].activo}
-                                onChange={(e) => handleHorarioChange(dia, 'activo', e.target.checked)}
-                                className="rounded text-indigo-600 focus:ring-indigo-500 mr-2"
-                              />
-                              <span className="text-sm text-gray-600">Activo</span>
-                            </label>
-                          </div>
-                          {formData.horario[dia as keyof typeof formData.horario].activo && (
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-1">Entrada</label>
-                                <input
-                                  type="time"
-                                  value={formData.horario[dia as keyof typeof formData.horario].entrada}
-                                  onChange={(e) => handleHorarioChange(dia, 'entrada', e.target.value)}
-                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-1">Salida</label>
-                                <input
-                                  type="time"
-                                  value={formData.horario[dia as keyof typeof formData.horario].salida}
-                                  onChange={(e) => handleHorarioChange(dia, 'salida', e.target.value)}
-                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-4 p-3 bg-yellow-50 rounded-lg">
-                      <p className="text-xs text-yellow-700">
-                        <strong>Total horas semanales configuradas:</strong> {calcularHorasSemanales(formData.horario).toFixed(1)} horas
-                        {calcularHorasSemanales(formData.horario) > getMaxHorasSemanales(new Date()) && (
-                          <span className="block text-red-600 mt-1">
-                            ⚠️ Atención: Estás configurando {calcularHorasSemanales(formData.horario).toFixed(1)} horas semanales, 
-                            lo cual excede el máximo legal de {getMaxHorasSemanales(new Date())} horas.
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
+              <form onSubmit={handleSubmit} className="p-6 max-h-[80vh] overflow-y-auto space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nombre completo *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.nombre}
+                    onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    required
+                    placeholder="Ej: Juan Pérez"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    required
+                    placeholder="ejemplo@ofimundo.cl"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Cargo *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.cargo}
+                    onChange={(e) => setFormData({ ...formData, cargo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    required
+                    placeholder="Ej: Desarrollador RPA, Analista, etc."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Horas disponibles por mes *
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.horasDisponibles}
+                    onChange={(e) => setFormData({ ...formData, horasDisponibles: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Por defecto 173 hrs/mes (equivalente a 40.0 hrs/semana de Lunes a Viernes).
+                  </p>
                 </div>
 
-                <div className="mt-6 flex justify-end space-x-3 sticky bottom-0 bg-white pt-4 border-t">
+                <div className="mt-6 flex justify-end space-x-3 pt-4 border-t">
                   <button
                     type="button"
                     onClick={() => {

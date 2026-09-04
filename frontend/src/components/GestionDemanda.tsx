@@ -471,7 +471,7 @@ const GestionDemanda: React.FC = () => {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                <span>Nueva Demanda</span>
+                <span>Nuevo proyecto</span>
               </button>
             </div>
           </div>
@@ -544,9 +544,9 @@ const GestionDemanda: React.FC = () => {
                 onChange={(e) => setFilterTipo(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="todos">Tipo: Todos (Internos y Externos)</option>
-                <option value="Interno">Internos únicamente</option>
-                <option value="Externo">Externos únicamente</option>
+                <option value="todos">Tipo: Todos</option>
+                <option value="Interno">Interno</option>
+                <option value="Externo">Externo</option>
               </select>
             </div>
 
