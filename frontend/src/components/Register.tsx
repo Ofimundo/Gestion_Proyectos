@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
+import logoTransparente from '../assets/Logo_transparente.png';
 
 interface RegisterProps {
   onSwitchToLogin: () => void;
@@ -155,10 +156,12 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 py-8">
       <div className="w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl mx-auto mb-4 shadow-xl flex items-center justify-center">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-            </svg>
+          <div className="flex justify-center mb-4 sm:mb-6">
+            <img 
+              src={logoTransparente} 
+              alt="OFILAB Logo" 
+              className="h-16 sm:h-20 md:h-24 object-contain filter drop-shadow-md hover:scale-105 transition-transform duration-300" 
+            />
           </div>
           <h2 className="text-4xl font-bold text-gray-900 mb-2">
             Crear cuenta

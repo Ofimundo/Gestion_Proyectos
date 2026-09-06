@@ -202,34 +202,53 @@ const ModalTraspasoSolicitud: React.FC<{
   );
 };
 
+const ETAPAS_SEQUENTIAL = [
+  { id: 'Ingreso', shortLabel: '1. Ingreso', fullLabel: '1. Ingreso', label: '1. Ingreso', icon: '🟡' },
+  { id: 'Evaluación', shortLabel: '2. Evalua...', fullLabel: '2. Evaluación', label: '2. Evaluación', icon: '🔵' },
+  { id: 'Priorización', shortLabel: '3. Prioriz...', fullLabel: '3. Priorización', label: '3. Priorización', icon: '🟣' },
+  { id: 'Comité', shortLabel: '4. Comité', fullLabel: '4. Comité', label: '4. Comité', icon: '🟦' },
+  { id: 'Ejecución', shortLabel: '5. Ejecuc...', fullLabel: '5. Ejecución', label: '5. Ejecución', icon: '🟠' },
+  { id: 'Aprobación Usuario', shortLabel: '6. Apr. Usr', fullLabel: '6. Aprobación Usuario', label: '6. Aprobación Usuario', icon: '🟪' },
+  { id: 'Capacitación', shortLabel: '7. Capacit...', fullLabel: '7. Capacitación', label: '7. Capacitación', icon: '🎓' },
+  { id: 'Cierre', shortLabel: '8. Cierre', fullLabel: '8. Cierre', label: '8. Cierre', icon: '🟢' },
+];
+
+const getEtapaBadgeClass = (etapa: string): string => {
+  switch (etapa) {
+    case 'Ingreso': return 'bg-amber-100 text-amber-800 border-amber-300';
+    case 'Evaluación': return 'bg-blue-100 text-blue-800 border-blue-300';
+    case 'Priorización': return 'bg-purple-100 text-purple-800 border-purple-300';
+    case 'Comité': return 'bg-sky-100 text-sky-800 border-sky-300';
+    case 'Ejecución': return 'bg-orange-100 text-orange-800 border-orange-300';
+    case 'Aprobación Usuario': return 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-300';
+    case 'Capacitación': return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+    case 'Cierre': return 'bg-green-100 text-green-800 border-green-300';
+    case 'Pendiente información': return 'bg-slate-100 text-slate-700 border-slate-300';
+    case 'Postergado': return 'bg-amber-50 text-amber-900 border-amber-300';
+    case 'Pausado': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+    case 'Rechazado': return 'bg-red-100 text-red-800 border-red-300';
+    case 'Cancelado': return 'bg-rose-100 text-rose-800 border-rose-300';
+    default: return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+  }
+};
+
 // Componente de Trazabilidad / Stepper del Ciclo de Vida del Proyecto ("Pedido viajando")
 const ProjectLifecycleStepper: React.FC<{
   currentStage: string;
   onStageChange: (stage: string) => void;
 }> = ({ currentStage, onStageChange }) => {
-  const stages = [
-    { id: 'Prospecto', label: '1. Prospecto', sublabel: 'Comercial', icon: '💼' },
-    { id: 'Ficha', label: '2. Ficha', sublabel: 'Proyecto', icon: '📄' },
-    { id: 'Solicitud', label: '3. Solicitud', sublabel: 'Formulario', icon: '📋' },
-    { id: 'Aprobado', label: '4. Resolución', sublabel: 'Final', icon: '🏁' },
-  ];
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
 
   const getStageIndex = (stage: string) => {
-    switch (stage) {
-      case 'Prospecto': return 0;
-      case 'Ficha': return 1;
-      case 'Solicitud': return 2;
-      case 'Aprobado': return 3;
-      case 'Rechazado': return 3;
-      default: return 1;
-    }
+    const idx = ETAPAS_SEQUENTIAL.findIndex(s => s.id === stage);
+    return idx !== -1 ? idx : 0;
   };
 
   const currentIndex = getStageIndex(currentStage);
-  const isRechazado = currentStage === 'Rechazado';
+  const currentSeqObj = ETAPAS_SEQUENTIAL.find(s => s.id === currentStage);
 
   return (
-    <div className="bg-gradient-to-r from-slate-50 via-indigo-50/60 to-purple-50 p-3.5 rounded-xl border border-indigo-100 shadow-xs mt-3">
+    <div className="bg-gradient-to-r from-slate-50 via-indigo-50/60 to-purple-50 p-3.5 rounded-xl border border-indigo-100 shadow-xs mt-3 col-span-1 md:col-span-2">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
           <span className="text-base animate-pulse">📦</span>
@@ -237,31 +256,24 @@ const ProjectLifecycleStepper: React.FC<{
             Etapa del Proyecto (Trazabilidad)
           </span>
         </div>
-        <span className={`px-2 py-0.5 text-xs font-extrabold rounded-full flex items-center gap-1 shadow-xs ${
-          isRechazado ? 'bg-red-100 text-red-700 border border-red-200' :
-          currentStage === 'Aprobado' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-          'bg-indigo-100 text-indigo-800 border border-indigo-200'
-        }`}>
-          {isRechazado ? '❌ Rechazado' :
-           currentStage === 'Aprobado' ? '✅ Aprobado' :
-           currentStage === 'Solicitud' ? '📋 En Solicitud' :
-           currentStage === 'Prospecto' ? '💼 Prospecto' : '📄 Ficha Creada'}
+        <span className={`px-2.5 py-0.5 text-xs font-extrabold rounded-full flex items-center gap-1 shadow-xs border ${getEtapaBadgeClass(currentStage)}`}>
+          {`${currentSeqObj?.icon || '🟡'} ${currentStage}`}
         </span>
       </div>
 
       {/* Bar & Steps ("Pedido viajando") */}
-      <div className="relative my-3 px-2">
+      <div className="relative my-3 px-1">
         {/* Connecting Line */}
-        <div className="absolute top-3.5 left-6 right-6 h-1 bg-gray-200 rounded -z-0">
+        <div className="absolute top-4 left-7 right-7 h-1 bg-gray-200 rounded -z-0">
           <div 
-            className={`h-1 transition-all duration-500 rounded ${isRechazado ? 'bg-red-500' : 'bg-indigo-600'}`}
-            style={{ width: `${(currentIndex / 3) * 100}%` }}
+            className="h-1 transition-all duration-500 rounded bg-indigo-600"
+            style={{ width: `${(currentIndex / (ETAPAS_SEQUENTIAL.length - 1)) * 100}%` }}
           />
         </div>
 
         {/* Steps Nodes */}
-        <div className="flex justify-between items-center relative z-10">
-          {stages.map((st, idx) => {
+        <div className="flex justify-between items-start relative z-10 w-full">
+          {ETAPAS_SEQUENTIAL.map((st, idx) => {
             const isCompleted = idx < currentIndex;
             const isCurrent = idx === currentIndex;
 
@@ -269,38 +281,35 @@ const ProjectLifecycleStepper: React.FC<{
               <div 
                 key={st.id} 
                 onClick={() => onStageChange(st.id)}
-                className="flex flex-col items-center cursor-pointer group"
-                title={`Cambiar a etapa: ${st.label}`}
+                className="flex flex-col items-center cursor-pointer group flex-1 min-w-0 px-0.5 text-center"
+                title={`Cambiar a etapa: ${st.fullLabel}`}
               >
-                {/* Active Moving Marker ("Proyecto aquí") */}
+                {/* Active Moving Marker */}
                 <div className="h-5 flex items-center justify-center mb-0.5">
                   {isCurrent && (
-                    <div className="animate-bounce flex items-center gap-0.5 bg-indigo-600 text-white text-[9px] px-1.5 py-0.5 rounded-full shadow-md font-bold">
+                    <div className="animate-bounce flex items-center gap-0.5 bg-indigo-600 text-white text-[9px] px-1.5 py-0.5 rounded-full shadow-md font-bold whitespace-nowrap">
                       <span>🚀</span>
-                      <span>Proyecto</span>
+                      <span className="hidden sm:inline">Aquí</span>
                     </div>
                   )}
                 </div>
 
                 {/* Node Circle */}
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 transform group-hover:scale-110 shadow-xs ${
-                  isCurrent ? (isRechazado ? 'bg-red-600 text-white ring-4 ring-red-100 scale-110' : 'bg-indigo-600 text-white ring-4 ring-indigo-100 scale-110') :
+                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 transform group-hover:scale-110 shadow-xs ${
+                  isCurrent ? 'bg-indigo-600 text-white ring-4 ring-indigo-100 scale-110' :
                   isCompleted ? 'bg-emerald-500 text-white' :
                   'bg-white border-2 border-gray-300 text-gray-400'
                 }`}>
                   {isCompleted ? '✓' : st.icon}
                 </div>
 
-                {/* Step Labels */}
-                <div className="text-center mt-1">
-                  <span className={`block text-[10px] font-bold leading-tight ${
+                {/* Step Label (sin superposición de texto) */}
+                <div className="mt-1.5 w-full">
+                  <span className={`block text-[10px] sm:text-[11px] font-bold leading-tight truncate ${
                     isCurrent ? 'text-indigo-900 font-extrabold' :
-                    isCompleted ? 'text-emerald-700' : 'text-gray-400'
-                  }`}>
-                    {st.label}
-                  </span>
-                  <span className="block text-[9px] text-gray-500 leading-none mt-0.5">
-                    {st.sublabel}
+                    isCompleted ? 'text-emerald-700' : 'text-gray-500'
+                  }`} title={st.fullLabel}>
+                    {st.shortLabel}
                   </span>
                 </div>
               </div>
@@ -309,36 +318,42 @@ const ProjectLifecycleStepper: React.FC<{
         </div>
       </div>
 
-      {/* Direct Selector Options / Buttons */}
-      <div className="flex flex-wrap items-center justify-between gap-1 mt-3 pt-2 border-t border-indigo-100/60">
-        <span className="text-[10px] text-gray-500 font-semibold">Seleccionar etapa:</span>
-        <div className="flex gap-1">
-          {stages.map(st => (
-            <button
-              key={st.id}
-              type="button"
-              onClick={() => onStageChange(st.id)}
-              className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
-                currentStage === st.id
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-white text-gray-600 hover:bg-indigo-50 border border-gray-200'
-              }`}
-            >
-              {st.icon} {st.id}
-            </button>
-          ))}
+      {/* Retractable Options Bar */}
+      <div className="mt-2 pt-2 border-t border-indigo-100/60">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-[10px] sm:text-[11px] text-gray-500 font-medium">
+            Selector de Etapas:
+          </span>
           <button
             type="button"
-            onClick={() => onStageChange('Rechazado')}
-            className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
-              currentStage === 'Rechazado'
-                ? 'bg-red-600 text-white shadow-xs'
-                : 'bg-white text-red-600 hover:bg-red-50 border border-red-200'
-            }`}
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-all border border-indigo-200 shadow-2xs cursor-pointer"
           >
-            ❌ Rechazado
+            <span>⚙️ {isExpanded ? 'Ocultar Opciones' : `Cambiar Etapa (${ETAPAS_SEQUENTIAL.length} Opciones)`}</span>
+            <span className="text-[9px]">{isExpanded ? '🔼' : '🔽'}</span>
           </button>
         </div>
+
+        {isExpanded && (
+          <div className="space-y-2 mt-2 pt-2 border-t border-indigo-100/40 text-xs">
+            <div className="flex flex-wrap gap-1">
+              {ETAPAS_SEQUENTIAL.map(st => (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => onStageChange(st.id)}
+                  className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${
+                    currentStage === st.id
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-white text-gray-600 hover:bg-indigo-50 border border-gray-200'
+                  }`}
+                >
+                  {st.icon} {st.fullLabel}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -350,6 +365,7 @@ const Fichas: React.FC = () => {
   const [fichas, setFichas] = useState<Ficha[]>([]);
   const [filteredFichas, setFilteredFichas] = useState<Ficha[]>([]);
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
+  const [prospectos, setProspectos] = useState<{ id: string; codigo: string; nombreProyecto: string; cliente?: string; valorServicio?: number; fechaInicio?: string; fechaTermino?: string }[]>([]);
   const [horasAsignadas, setHorasAsignadas] = useState<HorasAsignadasProfesional>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -379,7 +395,7 @@ const Fichas: React.FC = () => {
     liderId: '',
     descripcion: '',
     tecnologias: '',
-    etapaLifecycle: 'Ficha',
+    etapaLifecycle: 'Ingreso',
     venta: 0,
     hhImplementacion: 0,
     hhPeriodo: 0,
@@ -478,35 +494,77 @@ const Fichas: React.FC = () => {
 
         setErrors({});
         setTempRecursos([]);
-        setModalMode('add');
 
-        setFormData({
-          codigo: generateCodigo(demanda.proyecto || ''),
-          nombreProyecto: demanda.proyecto || '',
-          cliente: demanda.solicitante || demanda.area || '',
-          lider: demanda.responsableTI || '',
-          liderId: profResponsable ? profResponsable.id : '',
-          descripcion: demanda.observaciones || `Proyecto derivado de Gestión de la Demanda (Área: ${demanda.area || 'General'})`,
-          tecnologias: '',
-          etapaLifecycle: 'Ficha',
-          venta: 0,
-          hhImplementacion: 0,
-          hhPeriodo: 0,
-          recursos: [],
-          recursosIds: [],
-          horasPorRecurso: {},
-          fechaInicio: demanda.planificacionReal || demanda.planificacionEstimada || '',
-          fechaTermino: demanda.fechaEstimadaEntrega || '',
-          contraparte: demanda.solicitante || '',
-          estado: 'No Iniciada',
-          avance: 0,
-          hhPlanificadas: 0,
-          hhReal: 0,
-          alertas: '',
-          acciones: '',
-          responsable: demanda.responsableTI || '',
-          responsableId: profResponsable ? profResponsable.id : '',
-        });
+        const existingFicha = fichas.find(f => 
+          (demanda.codigo && f.codigo === demanda.codigo) ||
+          (f.nombreProyecto && f.nombreProyecto.trim().toLowerCase() === (demanda.proyecto || '').trim().toLowerCase())
+        );
+
+        const etapaSelected = (demanda.etapa && ETAPAS_SEQUENTIAL.some(s => s.id === demanda.etapa))
+          ? demanda.etapa
+          : 'Ingreso';
+
+        if (existingFicha) {
+          setModalMode('edit');
+          setCurrentFicha(existingFicha);
+          setFormData({
+            codigo: demanda.codigo || existingFicha.codigo || '',
+            nombreProyecto: existingFicha.nombreProyecto,
+            cliente: demanda.solicitante || demanda.area || existingFicha.cliente,
+            lider: demanda.responsableTI || existingFicha.lider,
+            liderId: profResponsable ? profResponsable.id : (existingFicha.liderId || ''),
+            descripcion: existingFicha.descripcion || demanda.observaciones || '',
+            tecnologias: existingFicha.tecnologias || '',
+            etapaLifecycle: etapaSelected,
+            venta: existingFicha.venta || 0,
+            hhImplementacion: existingFicha.hhImplementacion || 0,
+            hhPeriodo: existingFicha.hhPeriodo || 0,
+            recursos: existingFicha.recursos || [],
+            recursosIds: existingFicha.recursosIds || [],
+            horasPorRecurso: existingFicha.horasPorRecurso || {},
+            fechaInicio: existingFicha.fechaInicio || demanda.planificacionReal || demanda.planificacionEstimada || '',
+            fechaTermino: existingFicha.fechaTermino || demanda.fechaEstimadaEntrega || '',
+            contraparte: existingFicha.contraparte || demanda.solicitante || '',
+            estado: existingFicha.estado || 'No Iniciada',
+            avance: existingFicha.avance || 0,
+            hhPlanificadas: existingFicha.hhPlanificadas || 0,
+            hhReal: existingFicha.hhReal || 0,
+            alertas: existingFicha.alertas || '',
+            acciones: existingFicha.acciones || '',
+            responsable: demanda.responsableTI || existingFicha.responsable || '',
+            responsableId: profResponsable ? profResponsable.id : (existingFicha.responsableId || ''),
+          });
+        } else {
+          setModalMode('add');
+          setCurrentFicha(null);
+          setFormData({
+            codigo: demanda.codigo || generateCodigo(demanda.proyecto || ''),
+            nombreProyecto: demanda.proyecto || '',
+            cliente: demanda.solicitante || demanda.area || '',
+            lider: demanda.responsableTI || '',
+            liderId: profResponsable ? profResponsable.id : '',
+            descripcion: demanda.observaciones || '',
+            tecnologias: '',
+            etapaLifecycle: etapaSelected,
+            venta: 0,
+            hhImplementacion: 0,
+            hhPeriodo: 0,
+            recursos: [],
+            recursosIds: [],
+            horasPorRecurso: {},
+            fechaInicio: demanda.planificacionReal || demanda.planificacionEstimada || '',
+            fechaTermino: demanda.fechaEstimadaEntrega || '',
+            contraparte: demanda.solicitante || '',
+            estado: 'No Iniciada',
+            avance: 0,
+            hhPlanificadas: 0,
+            hhReal: 0,
+            alertas: '',
+            acciones: '',
+            responsable: demanda.responsableTI || '',
+            responsableId: profResponsable ? profResponsable.id : '',
+          });
+        }
 
         setModalKey(prev => prev + 1);
         setTimeout(() => {
@@ -533,7 +591,7 @@ const Fichas: React.FC = () => {
           cliente: prospecto.cliente || '',
           lider: '',
           liderId: '',
-          descripcion: `Ficha creada directamente desde Prospecto Comercial ${prospecto.codigo || ''}.\nGestor Comercial: ${prospecto.gestorComercial || 'N/A'}\nLínea de Servicio: ${prospecto.lineaServicio || 'N/A'}\nPlazo Estimado: ${prospecto.plazoEstimado || 'N/A'}`,
+          descripcion: prospecto.observaciones || '',
           tecnologias: '',
           etapaLifecycle: 'Prospecto',
           venta: prospecto.valorServicio || prospecto.totalIngresos || 0,
@@ -585,7 +643,7 @@ const Fichas: React.FC = () => {
           cliente: solicitud.nombreContraparteCliente || solicitud.area || '',
           lider: '',
           liderId: '',
-          descripcion: `Solicitud de proyecto aprobada.\nObjetivo: ${solicitud.objetivoGeneral || ''}\nPresupuesto: $${solicitud.presupuesto || 0}\nResponsable: ${solicitud.nombreResponsableProyecto || ''}`,
+          descripcion: solicitud.observaciones || '',
           tecnologias: '',
           etapaLifecycle: 'Solicitud',
           venta: solicitud.presupuesto || 0,
@@ -752,11 +810,32 @@ const Fichas: React.FC = () => {
     }
   };
 
+  const loadProspectos = async () => {
+    try {
+      const res = await api.get('/fichas-prospecto');
+      const raw = res.data?.data || res.data || [];
+      if (Array.isArray(raw)) {
+        setProspectos(raw.map((p: any) => ({
+          id: String(p.id),
+          codigo: p.codigo || p.Codigo || `PR-${p.id}`,
+          nombreProyecto: p.nombreProyecto || p.NombreProyecto || '',
+          cliente: p.cliente || p.Cliente || '',
+          valorServicio: p.valorServicio || p.totalIngresos || 0,
+          fechaInicio: p.fechaInicio ? p.fechaInicio.split('T')[0] : (p.fechaAdjudicacion ? p.fechaAdjudicacion.split('T')[0] : ''),
+          fechaTermino: p.fechaTermino ? p.fechaTermino.split('T')[0] : ''
+        })));
+      }
+    } catch (err) {
+      console.error('Error cargando prospectos:', err);
+    }
+  };
+
   useEffect(() => {
     loadProfesionales();
     loadFichas();
     loadHorasAsignadas();
     loadClientes();
+    loadProspectos();
 
     const handleStorageChange = () => {
       loadProfesionales();
@@ -928,7 +1007,7 @@ const Fichas: React.FC = () => {
       liderId: '',
       descripcion: '',
       tecnologias: '',
-      etapaLifecycle: 'Ficha',
+      etapaLifecycle: 'Ingreso',
       venta: 0,
       hhImplementacion: 0,
       hhPeriodo: 0,
@@ -966,7 +1045,7 @@ const Fichas: React.FC = () => {
       liderId: profLider ? profLider.id : '',
       descripcion: ficha.descripcion,
       tecnologias: ficha.tecnologias,
-      etapaLifecycle: ficha.etapaLifecycle || (ficha.estado === 'Completada' ? 'Aprobado' : 'Ficha'),
+      etapaLifecycle: ficha.etapaLifecycle || (ficha.estado === 'Completada' ? 'Cierre' : 'Ingreso'),
       venta: ficha.venta,
       hhImplementacion: ficha.hhImplementacion,
       hhPeriodo: ficha.hhPeriodo,
@@ -1294,6 +1373,7 @@ const Fichas: React.FC = () => {
                       <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider hidden sm:table-cell">Cliente</th>
                       <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">HH Total</th>
                       <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider hidden lg:table-cell">Recursos</th>
+                      <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">Etapa</th>
                       <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">Estado</th>
                       <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">Avance</th>
                       <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">Acciones</th>
@@ -1312,6 +1392,55 @@ const Fichas: React.FC = () => {
                               {ficha.recursos.slice(0, 2).join(', ')}
                               {ficha.recursos.length > 2 && ` +${ficha.recursos.length - 2}`}
                             </div>
+                          </td>
+                          <td className="px-2 sm:px-3 py-2 min-w-[150px]">
+                            {(() => {
+                              const stage = ficha.etapaLifecycle || (ficha.estado === 'Completada' ? 'Cierre' : 'Ingreso');
+                              const stageIndex = ETAPAS_SEQUENTIAL.findIndex(s => s.id === stage);
+
+                              return (
+                                <div className="space-y-1">
+                                  <select
+                                    value={stage}
+                                    onChange={async (e) => {
+                                      const newEtapa = e.target.value;
+                                      try {
+                                        const res = await api.put(`/fichas/${ficha.id}`, { etapaLifecycle: newEtapa });
+                                        if (res.data.success) {
+                                          setFichas(prev => prev.map(f => f.id === ficha.id ? { ...f, etapaLifecycle: newEtapa } : f));
+                                          setFilteredFichas(prev => prev.map(f => f.id === ficha.id ? { ...f, etapaLifecycle: newEtapa } : f));
+                                        }
+                                      } catch (err) {
+                                        console.error('Error actualizando etapa:', err);
+                                      }
+                                    }}
+                                    className={`px-2 py-0.5 text-[10px] font-bold rounded-lg border cursor-pointer focus:outline-none focus:ring-1 focus:ring-purple-500 shadow-xs ${getEtapaBadgeClass(stage)}`}
+                                  >
+                                    {ETAPAS_SEQUENTIAL.map(st => (
+                                      <option key={st.id} value={st.id} className="bg-white text-gray-800">
+                                        {st.icon} {st.fullLabel}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <div className="flex items-center gap-0.5 w-full max-w-[120px] pt-0.5" title={`Etapa actual: ${stage}`}>
+                                    {ETAPAS_SEQUENTIAL.map((st, idx) => {
+                                      const isCompleted = idx < stageIndex;
+                                      const isCurrent = idx === stageIndex;
+                                      return (
+                                        <div 
+                                          key={st.id} 
+                                          className={`h-1 flex-1 rounded-full transition-all ${
+                                            isCurrent ? 'bg-purple-600 ring-1 ring-purple-300 animate-pulse' :
+                                            isCompleted ? 'bg-emerald-500' : 'bg-gray-200'
+                                          }`}
+                                          title={`Etapa: ${st.label}`}
+                                        />
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-2 sm:px-3 py-2">
                             <span className={`px-1.5 py-0.5 rounded text-white text-xs font-bold ${getEstadoColor(ficha.estado)}`}>
@@ -1343,7 +1472,7 @@ const Fichas: React.FC = () => {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={8} className="px-4 py-6 text-center text-gray-400">No hay fichas</td>
+                        <td colSpan={9} className="px-4 py-6 text-center text-gray-400">No hay fichas</td>
                       </tr>
                     )}
                   </tbody>
@@ -1402,13 +1531,62 @@ const Fichas: React.FC = () => {
                             Información traspasada directamente desde Prospecto ({formData.codigo})
                           </p>
                           <p className="text-xs text-indigo-700 mt-0.5">
-                            Se cargaron el Nombre, Cliente, Venta, Fechas y Descripción del prospecto. Por favor selecciona el <strong>Líder del Proyecto</strong> y asigna los <strong>Recursos y Horas HH</strong> para completar la Ficha de Proyecto.
+                            Se cargaron el Nombre, Cliente, Venta y Fechas del prospecto. Por favor selecciona el <strong>Líder del Proyecto</strong> y asigna los <strong>Recursos y Horas HH</strong> para completar la Ficha de Proyecto.
                           </p>
                         </div>
                       </div>
                     )}
+
+                    {/* Vincular Ficha Prospecto (Auto-completar Código, Nombre y Cliente) */}
+                    {prospectos.length > 0 && (
+                      <div className="mb-4 bg-purple-50/70 p-3.5 rounded-xl border border-purple-200 shadow-xs">
+                        <label className="block text-xs font-bold text-purple-900 mb-1.5 flex items-center gap-1.5">
+                          <span>📋</span>
+                          <span>Seleccionar Ficha Prospecto (Sincroniza Código y Datos)</span>
+                        </label>
+                        <select
+                          value={prospectos.find(p => p.codigo === formData.codigo)?.id || ''}
+                          onChange={(e) => {
+                            const selected = prospectos.find(p => p.id === e.target.value);
+                            if (selected) {
+                              setFormData(prev => ({
+                                ...prev,
+                                codigo: selected.codigo,
+                                nombreProyecto: selected.nombreProyecto,
+                                cliente: prev.cliente || selected.cliente || '',
+                                venta: prev.venta || selected.valorServicio || 0,
+                                fechaInicio: prev.fechaInicio || selected.fechaInicio || '',
+                                fechaTermino: prev.fechaTermino || selected.fechaTermino || ''
+                              }));
+                            }
+                          }}
+                          className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500 font-medium text-gray-800"
+                        >
+                          <option value="">- Seleccionar desde Fichas Prospecto -</option>
+                          {prospectos.map(p => (
+                            <option key={p.id} value={p.id}>
+                              [{p.codigo}] {p.nombreProyecto} {p.cliente ? `(${p.cliente})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                       <div className="space-y-3 sm:space-y-4">
+                        {/* Código Proyecto (Prospecto) - EDITABLE */}
+                        <div>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">🔑 Código Proyecto (Prospecto)</label>
+                          <input 
+                            type="text" 
+                            name="codigo" 
+                            value={formData.codigo || ''} 
+                            onChange={handleInputChange} 
+                            placeholder="Ej: PR-2026-001"
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 border-gray-300 rounded font-mono focus:border-purple-500 outline-none" 
+                          />
+                        </div>
+
                         {/* Nombre del Proyecto - EDITABLE */}
                         <div>
                           <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">📁 Nombre del Proyecto *</label>
@@ -1518,7 +1696,7 @@ const Fichas: React.FC = () => {
 
                         {/* ✅ NUEVO: Seguidor Visual de Etapa del Proyecto / Trazabilidad ("Pedido viajando") */}
                         <ProjectLifecycleStepper
-                          currentStage={formData.etapaLifecycle || 'Ficha'}
+                          currentStage={formData.etapaLifecycle || 'Ingreso'}
                           onStageChange={(stage) => setFormData(prev => ({ ...prev, etapaLifecycle: stage }))}
                         />
                       </div>

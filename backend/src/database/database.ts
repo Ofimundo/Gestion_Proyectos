@@ -112,6 +112,7 @@ export async function initializeDatabase() {
                     Prioridad NVARCHAR(50) NOT NULL DEFAULT 'media',
                     Estado NVARCHAR(50) NOT NULL DEFAULT 'solicitado',
                     Etapa NVARCHAR(100) NULL,
+                    DecisionComite NVARCHAR(100) NULL,
                     Area NVARCHAR(100) NULL,
                     PlanificacionEstimada NVARCHAR(100) NULL,
                     PlanificacionReal NVARCHAR(100) NULL,
@@ -124,8 +125,46 @@ export async function initializeDatabase() {
                     FechaActualizacion DATETIME NULL
                 );
             END
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('GestionDemanda') AND name = 'DecisionComite')
+            BEGIN
+                ALTER TABLE GestionDemanda ADD DecisionComite NVARCHAR(100) NULL;
+            END
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('GestionDemanda') AND name = 'FechaSolicitud')
+            BEGIN
+                ALTER TABLE GestionDemanda ADD FechaSolicitud DATE NULL;
+            END
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('GestionDemanda') AND name = 'FechaComite')
+            BEGIN
+                ALTER TABLE GestionDemanda ADD FechaComite DATE NULL;
+            END
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('GestionDemanda') AND name = 'Codigo')
+            BEGIN
+                ALTER TABLE GestionDemanda ADD Codigo NVARCHAR(50) NULL;
+            END
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('GestionDemanda') AND name = 'Semaforo')
+            BEGIN
+                ALTER TABLE GestionDemanda ADD Semaforo NVARCHAR(50) NULL;
+            END
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('GestionDemanda') AND name = 'TiempoEstimadoCompleto')
+            BEGIN
+                ALTER TABLE GestionDemanda ADD TiempoEstimadoCompleto NVARCHAR(100) NULL;
+            END
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('GestionDemanda') AND name = 'TiempoEstimadoAjuste')
+            BEGIN
+                ALTER TABLE GestionDemanda ADD TiempoEstimadoAjuste NVARCHAR(100) NULL;
+            END
+
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('FichasProyecto') AND name = 'EtapaLifecycle')
+            BEGIN
+                ALTER TABLE FichasProyecto ADD EtapaLifecycle NVARCHAR(100) NULL;
+            END
+
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Proyectos') AND name = 'EtapaLifecycle')
+            BEGIN
+                ALTER TABLE Proyectos ADD EtapaLifecycle NVARCHAR(100) NULL;
+            END
         `);
-        console.log('✅ Estructura de tabla GestionDemanda verificada.');
+        console.log('✅ Estructura de tabla GestionDemanda y FichasProyecto verificada.');
     } catch (error: any) {
         console.warn('⚠️  Error al inicializar la base de datos SQL Server:', error.message);
     }

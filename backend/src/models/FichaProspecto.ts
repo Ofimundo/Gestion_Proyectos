@@ -193,6 +193,7 @@ export class FichaProspectoModel {
 
         if (check.recordset.length === 0) {
             await GestionDemandaModel.create({
+                codigo: prospecto.codigo || '',
                 proyecto: prospecto.nombreProyecto,
                 tipoProyecto: tipoProyecto,
                 prioridad: 'alta',
@@ -203,19 +204,20 @@ export class FichaProspectoModel {
                 fechaEstimadaEntrega: prospecto.fechaTermino || '',
                 responsableTI: prospecto.gestorComercial || 'Por asignar',
                 solicitante: prospecto.cliente || 'Prospecto comercial',
-                observaciones: `Sincronizado automáticamente desde Prospecto (${prospecto.estado || ''}). Código: ${prospecto.codigo || ''}`
+                observaciones: ''
             });
             console.log(`✅ Demanda creada automáticamente desde el Prospecto "${prospecto.nombreProyecto}" (${tipoProyecto})`);
         } else {
             const demandaId = check.recordset[0].Id;
             const updatePayload: any = {
+                codigo: prospecto.codigo || '',
                 tipoProyecto: tipoProyecto,
                 area: prospecto.lineaServicio || 'Comercial',
                 planificacionEstimada: prospecto.fechaInicio || prospecto.fechaEstimadaAdjudicacion || new Date().toISOString().split('T')[0],
                 fechaEstimadaEntrega: prospecto.fechaTermino || '',
                 responsableTI: prospecto.gestorComercial || 'Por asignar',
                 solicitante: prospecto.cliente || 'Prospecto comercial',
-                observaciones: `Actualizado desde Prospecto (${prospecto.estado || ''}). Código: ${prospecto.codigo || ''}`
+                observaciones: ''
             };
             if (is100Pct) {
                 updatePayload.estado = 'ejecución aprobada';
@@ -228,12 +230,14 @@ export class FichaProspectoModel {
     public static async syncAllToDemanda(): Promise<void> {
         try {
             const db = await getDatabase();
+            // 1. Insert new prospectos to GestionDemanda
             await db.request().query(`
                 INSERT INTO GestionDemanda (
-                    Proyecto, TipoProyecto, Prioridad, Estado, Etapa, Area,
+                    Codigo, Proyecto, TipoProyecto, Prioridad, Estado, Etapa, Area,
                     PlanificacionEstimada, FechaEstimadaEntrega, ResponsableTI, Solicitante, Observaciones, FechaCreacion
                 )
                 SELECT 
+                    fp.Codigo AS Codigo,
                     fp.NombreProyecto,
                     CASE 
                         WHEN UPPER(LTRIM(RTRIM(ISNULL(fp.Cliente, '')))) IN ('OFIMUNDO', 'DREAMTEC', 'GLOBAL HORIZON', 'HIWAY') OR fp.TipoCliente = 'Interno' THEN 'Interno'
@@ -257,7 +261,7 @@ export class FichaProspectoModel {
                     fp.FechaTermino AS FechaEstimadaEntrega,
                     COALESCE(NULLIF(fp.GestorComercial, ''), 'Por asignar') AS ResponsableTI,
                     COALESCE(NULLIF(fp.Cliente, ''), 'Prospecto comercial') AS Solicitante,
-                    CONCAT('Sincronizado automáticamente desde Prospecto (', ISNULL(fp.Estado, ''), '). Código: ', ISNULL(fp.Codigo, '')) AS Observaciones,
+                    '' AS Observaciones,
                     GETDATE() AS FechaCreacion
                 FROM FichasProspecto fp
                 WHERE fp.NombreProyecto IS NOT NULL 
@@ -266,6 +270,45 @@ export class FichaProspectoModel {
                       SELECT 1 FROM GestionDemanda gd 
                       WHERE LOWER(LTRIM(RTRIM(gd.Proyecto))) = LOWER(LTRIM(RTRIM(fp.NombreProyecto)))
                   );
+            `);
+
+            // 2. Sync missing Codigo in existing GestionDemanda rows from FichasProspecto
+            await db.request().query(`
+                UPDATE gd
+                SET gd.Codigo = fp.Codigo
+                FROM GestionDemanda gd
+                INNER JOIN FichasProspecto fp ON LOWER(LTRIM(RTRIM(gd.Proyecto))) = LOWER(LTRIM(RTRIM(fp.NombreProyecto)))
+                WHERE (gd.Codigo IS NULL OR gd.Codigo = '' OR gd.Codigo LIKE 'DEM-%') 
+                  AND fp.Codigo IS NOT NULL AND fp.Codigo <> '';
+
+                UPDATE p
+                SET p.Codigo = fp.Codigo
+                FROM Proyectos p
+                INNER JOIN FichasProspecto fp ON LOWER(LTRIM(RTRIM(p.NombreProyecto))) = LOWER(LTRIM(RTRIM(fp.NombreProyecto)))
+                WHERE (p.Codigo IS NULL OR p.Codigo = '' OR p.Codigo LIKE 'FCH-%') AND fp.Codigo IS NOT NULL AND fp.Codigo <> '';
+
+                UPDATE p
+                SET p.Codigo = gd.Codigo
+                FROM Proyectos p
+                INNER JOIN GestionDemanda gd ON LOWER(LTRIM(RTRIM(p.NombreProyecto))) = LOWER(LTRIM(RTRIM(gd.Proyecto)))
+                WHERE (p.Codigo IS NULL OR p.Codigo = '' OR p.Codigo LIKE 'FCH-%') AND gd.Codigo IS NOT NULL AND gd.Codigo <> '' AND gd.Codigo NOT LIKE 'DEM-%';
+
+                UPDATE fp
+                SET fp.EtapaLifecycle = gd.Etapa
+                FROM FichasProyecto fp
+                INNER JOIN Proyectos p ON fp.ProyectoId = p.Id
+                INNER JOIN GestionDemanda gd ON (p.Codigo IS NOT NULL AND p.Codigo <> '' AND p.Codigo = gd.Codigo) OR LOWER(LTRIM(RTRIM(p.NombreProyecto))) = LOWER(LTRIM(RTRIM(gd.Proyecto)))
+                WHERE gd.Etapa IS NOT NULL AND gd.Etapa <> '';
+            `);
+
+            // 3. Clear old auto-generated text in Observaciones column in DB
+            await db.request().query(`
+                UPDATE GestionDemanda
+                SET Observaciones = ''
+                WHERE Observaciones LIKE '%Actualizado desde Prospect%'
+                   OR Observaciones LIKE '%Sincronizado%'
+                   OR Observaciones LIKE '%Ficha creada%'
+                   OR Observaciones LIKE '%Traspasado desde%';
             `);
         } catch (err) {
             console.error('Error al sincronizar todos los prospectos a Gestión de la Demanda:', err);

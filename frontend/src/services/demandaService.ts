@@ -203,7 +203,7 @@ export const demandaService = {
         fechaEstimadaEntrega: prospecto.fechaTermino || '',
         responsableTI: prospecto.gestorComercial || 'Por asignar',
         solicitante: prospecto.cliente || 'Cliente Prospecto',
-        observaciones: `Sincronizado desde Prospecto comercial (${prospecto.estado || ''}). Código: ${prospecto.codigo || ''}`
+        observaciones: ''
       };
 
       if (!exists) {

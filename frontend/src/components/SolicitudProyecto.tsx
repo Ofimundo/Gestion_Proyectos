@@ -644,7 +644,7 @@ const SolicitudProyecto: React.FC = () => {
         tieneSustentoLegal: false,
         tieneRequisitoFecha: false,
         fechaSolicitud: new Date().toISOString().split('T')[0],
-        observaciones: `Traspasado desde Ficha de Proyecto (Código: ${ficha.codigo || ''})`
+        observaciones: ''
       });
       setMostrarFormulario(true);
       navigate(location.pathname, { replace: true, state: {} });

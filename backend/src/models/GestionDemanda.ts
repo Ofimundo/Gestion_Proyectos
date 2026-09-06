@@ -4,18 +4,25 @@ import FichaModel from './Ficha';
 
 export interface DemandaData {
     id: string;
+    codigo?: string;
     proyecto: string;
     tipoProyecto: 'Interno' | 'Externo';
-    prioridad: 'alta' | 'media' | 'baja';
-    estado: 'backlog' | 'en proceso' | 'finalizado' | 'en espera cierre del usuario' | 'solicitado' | 'ejecución aprobada';
-    etapa: string;
+    fechaSolicitud?: string;
     area: string;
+    responsableTI: string;
+    estado: string;
+    decisionComite?: string;
+    prioridad: string;
+    semaforo?: string;
+    etapa: string;
+    fechaComite?: string;
     planificacionEstimada: string;
     planificacionReal: string;
     fechaEstimadaEntrega: string;
     fechaEntregaReal?: string;
-    responsableTI: string;
-    solicitante: string;
+    tiempoEstimadoCompleto?: string;
+    tiempoEstimadoAjuste?: string;
+    solicitante?: string;
     observaciones?: string;
     created_at?: string;
     updated_at?: string;
@@ -26,29 +33,36 @@ export class GestionDemandaModel {
         const db = await getDatabase();
 
         const result = await db.request()
+            .input('Codigo', sql.NVarChar, data.codigo || '')
             .input('Proyecto', sql.NVarChar, data.proyecto || '')
             .input('TipoProyecto', sql.NVarChar, data.tipoProyecto || 'Interno')
-            .input('Prioridad', sql.NVarChar, data.prioridad || 'media')
-            .input('Estado', sql.NVarChar, data.estado || 'solicitado')
-            .input('Etapa', sql.NVarChar, data.etapa || '')
+            .input('FechaSolicitud', sql.Date, data.fechaSolicitud ? new Date(data.fechaSolicitud) : null)
             .input('Area', sql.NVarChar, data.area || '')
+            .input('ResponsableTI', sql.NVarChar, data.responsableTI || '')
+            .input('Estado', sql.NVarChar, data.estado || 'Solicitud')
+            .input('DecisionComite', sql.NVarChar, data.decisionComite || 'Pendiente')
+            .input('Prioridad', sql.NVarChar, data.prioridad || 'Media')
+            .input('Semaforo', sql.NVarChar, data.semaforo || 'Verde')
+            .input('Etapa', sql.NVarChar, data.etapa || 'Ingreso')
+            .input('FechaComite', sql.Date, data.fechaComite ? new Date(data.fechaComite) : null)
             .input('PlanificacionEstimada', sql.NVarChar, data.planificacionEstimada || '')
             .input('PlanificacionReal', sql.NVarChar, data.planificacionReal || '')
             .input('FechaEstimadaEntrega', sql.Date, data.fechaEstimadaEntrega ? new Date(data.fechaEstimadaEntrega) : null)
             .input('FechaEntregaReal', sql.Date, data.fechaEntregaReal ? new Date(data.fechaEntregaReal) : null)
-            .input('ResponsableTI', sql.NVarChar, data.responsableTI || '')
+            .input('TiempoEstimadoCompleto', sql.NVarChar, data.tiempoEstimadoCompleto || '')
+            .input('TiempoEstimadoAjuste', sql.NVarChar, data.tiempoEstimadoAjuste || '')
             .input('Solicitante', sql.NVarChar, data.solicitante || '')
             .input('Observaciones', sql.NVarChar, data.observaciones || '')
             .query(`
                 INSERT INTO GestionDemanda (
-                    Proyecto, TipoProyecto, Prioridad, Estado, Etapa, Area,
-                    PlanificacionEstimada, PlanificacionReal, FechaEstimadaEntrega, FechaEntregaReal,
-                    ResponsableTI, Solicitante, Observaciones, FechaCreacion
+                    Codigo, Proyecto, TipoProyecto, FechaSolicitud, Area, ResponsableTI, Estado, DecisionComite, Prioridad,
+                    Semaforo, Etapa, FechaComite, PlanificacionEstimada, PlanificacionReal, FechaEstimadaEntrega,
+                    FechaEntregaReal, TiempoEstimadoCompleto, TiempoEstimadoAjuste, Solicitante, Observaciones, FechaCreacion
                 )
                 VALUES (
-                    @Proyecto, @TipoProyecto, @Prioridad, @Estado, @Etapa, @Area,
-                    @PlanificacionEstimada, @PlanificacionReal, @FechaEstimadaEntrega, @FechaEntregaReal,
-                    @ResponsableTI, @Solicitante, @Observaciones, GETDATE()
+                    @Codigo, @Proyecto, @TipoProyecto, @FechaSolicitud, @Area, @ResponsableTI, @Estado, @DecisionComite, @Prioridad,
+                    @Semaforo, @Etapa, @FechaComite, @PlanificacionEstimada, @PlanificacionReal, @FechaEstimadaEntrega,
+                    @FechaEntregaReal, @TiempoEstimadoCompleto, @TiempoEstimadoAjuste, @Solicitante, @Observaciones, GETDATE()
                 );
                 SELECT SCOPE_IDENTITY() AS Id;
             `);
@@ -60,15 +74,14 @@ export class GestionDemandaModel {
         return created;
     }
 
-    static async findById(id: string | number): Promise<DemandaData | undefined> {
+    static async findById(id: string | number): Promise<DemandaData | null> {
         const db = await getDatabase();
         const result = await db.request()
             .input('Id', sql.Int, Number(id))
             .query('SELECT * FROM GestionDemanda WHERE Id = @Id');
 
-        const row = result.recordset[0];
-        if (!row) return undefined;
-        return this.parseDemanda(row);
+        if (result.recordset.length === 0) return null;
+        return this.parseDemanda(result.recordset[0]);
     }
 
     static async findAll(): Promise<DemandaData[]> {
@@ -83,17 +96,24 @@ export class GestionDemandaModel {
         const request = db.request();
 
         const mappings: { [key: string]: { col: string; type: any } } = {
+            codigo: { col: 'Codigo', type: sql.NVarChar },
             proyecto: { col: 'Proyecto', type: sql.NVarChar },
             tipoProyecto: { col: 'TipoProyecto', type: sql.NVarChar },
-            prioridad: { col: 'Prioridad', type: sql.NVarChar },
-            estado: { col: 'Estado', type: sql.NVarChar },
-            etapa: { col: 'Etapa', type: sql.NVarChar },
+            fechaSolicitud: { col: 'FechaSolicitud', type: sql.Date },
             area: { col: 'Area', type: sql.NVarChar },
+            responsableTI: { col: 'ResponsableTI', type: sql.NVarChar },
+            estado: { col: 'Estado', type: sql.NVarChar },
+            decisionComite: { col: 'DecisionComite', type: sql.NVarChar },
+            prioridad: { col: 'Prioridad', type: sql.NVarChar },
+            semaforo: { col: 'Semaforo', type: sql.NVarChar },
+            etapa: { col: 'Etapa', type: sql.NVarChar },
+            fechaComite: { col: 'FechaComite', type: sql.Date },
             planificacionEstimada: { col: 'PlanificacionEstimada', type: sql.NVarChar },
             planificacionReal: { col: 'PlanificacionReal', type: sql.NVarChar },
             fechaEstimadaEntrega: { col: 'FechaEstimadaEntrega', type: sql.Date },
             fechaEntregaReal: { col: 'FechaEntregaReal', type: sql.Date },
-            responsableTI: { col: 'ResponsableTI', type: sql.NVarChar },
+            tiempoEstimadoCompleto: { col: 'TiempoEstimadoCompleto', type: sql.NVarChar },
+            tiempoEstimadoAjuste: { col: 'TiempoEstimadoAjuste', type: sql.NVarChar },
             solicitante: { col: 'Solicitante', type: sql.NVarChar },
             observaciones: { col: 'Observaciones', type: sql.NVarChar }
         };
@@ -118,6 +138,35 @@ export class GestionDemandaModel {
                 SET ${fields.join(', ')}, FechaActualizacion = GETDATE()
                 WHERE Id = @Id
             `);
+        }
+
+        if (data.etapa) {
+            try {
+                const currentDemanda = await this.findById(id);
+                if (currentDemanda) {
+                    const code = data.codigo || currentDemanda.codigo;
+                    const projName = data.proyecto || currentDemanda.proyecto;
+                    await db.request()
+                        .input('Etapa', sql.NVarChar, data.etapa)
+                        .input('Codigo', sql.NVarChar, code || '')
+                        .input('Proyecto', sql.NVarChar, projName || '')
+                        .query(`
+                            UPDATE fp
+                            SET fp.EtapaLifecycle = @Etapa, fp.FechaActualizacion = GETDATE()
+                            FROM FichasProyecto fp
+                            INNER JOIN Proyectos p ON fp.ProyectoId = p.Id
+                            WHERE (p.Codigo = @Codigo AND @Codigo <> '')
+                               OR LOWER(LTRIM(RTRIM(p.NombreProyecto))) = LOWER(LTRIM(RTRIM(@Proyecto)));
+
+                            UPDATE Proyectos
+                            SET EtapaLifecycle = @Etapa, FechaActualizacion = GETDATE()
+                            WHERE (Codigo = @Codigo AND @Codigo <> '')
+                               OR LOWER(LTRIM(RTRIM(NombreProyecto))) = LOWER(LTRIM(RTRIM(@Proyecto)));
+                        `);
+                }
+            } catch (syncErr) {
+                console.error('Error al sincronizar Etapa desde Demanda a FichasProyecto:', syncErr);
+            }
         }
 
         const updated = await this.findById(id);
@@ -153,7 +202,7 @@ export class GestionDemandaModel {
                 cliente: demanda.solicitante || demanda.area || 'No especificado',
                 lider: demanda.responsableTI || 'No asignado',
                 responsable: demanda.responsableTI || '',
-                descripcion: demanda.observaciones || `Creado automáticamente desde Gestión de Demanda (Área: ${demanda.area || 'General'})`,
+                descripcion: demanda.observaciones || '',
                 fechaInicio: demanda.planificacionReal || demanda.planificacionEstimada || new Date().toISOString().split('T')[0],
                 fechaTermino: demanda.fechaEstimadaEntrega || '',
                 estado: 'No Iniciada',
@@ -169,17 +218,24 @@ export class GestionDemandaModel {
     private static parseDemanda(row: any): DemandaData {
         return {
             id: String(row.Id),
+            codigo: row.Codigo || '',
             proyecto: row.Proyecto || '',
             tipoProyecto: (row.TipoProyecto as any) || 'Interno',
-            prioridad: (row.Prioridad as any) || 'media',
-            estado: (row.Estado as any) || 'solicitado',
-            etapa: row.Etapa || '',
+            fechaSolicitud: row.FechaSolicitud ? new Date(row.FechaSolicitud).toISOString().split('T')[0] : '',
             area: row.Area || '',
+            responsableTI: row.ResponsableTI || '',
+            estado: row.Estado || 'Solicitud',
+            decisionComite: row.DecisionComite || 'Pendiente',
+            prioridad: row.Prioridad || 'Media',
+            semaforo: row.Semaforo || 'Verde',
+            etapa: row.Etapa || 'Ingreso',
+            fechaComite: row.FechaComite ? new Date(row.FechaComite).toISOString().split('T')[0] : '',
             planificacionEstimada: row.PlanificacionEstimada || '',
             planificacionReal: row.PlanificacionReal || '',
             fechaEstimadaEntrega: row.FechaEstimadaEntrega ? new Date(row.FechaEstimadaEntrega).toISOString().split('T')[0] : '',
             fechaEntregaReal: row.FechaEntregaReal ? new Date(row.FechaEntregaReal).toISOString().split('T')[0] : '',
-            responsableTI: row.ResponsableTI || '',
+            tiempoEstimadoCompleto: row.TiempoEstimadoCompleto || '',
+            tiempoEstimadoAjuste: row.TiempoEstimadoAjuste || '',
             solicitante: row.Solicitante || '',
             observaciones: row.Observaciones || '',
             created_at: row.FechaCreacion ? new Date(row.FechaCreacion).toISOString() : '',

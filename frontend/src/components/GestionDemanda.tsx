@@ -1,59 +1,155 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DemandaItem, PrioridadDemanda, EstadoDemanda, TipoProyectoDemanda } from '../types/demanda';
+import { DemandaItem } from '../types/demanda';
 import demandaService from '../services/demandaService';
+import api from '../services/api';
 
-const ESTADOS_DEMANDA: EstadoDemanda[] = [
-  'backlog',
-  'solicitado',
-  'ejecución aprobada',
-  'en proceso',
-  'en espera cierre del usuario',
-  'finalizado'
+export const AREAS_SOLICITANTES = [
+  'Admin & Fin',
+  'Operaciones',
+  'G. General',
+  'Experiencia Clientes',
+  'Experiencia Colaboradores',
+  'Empresa Dreamtec',
+  'Empresa Global Horizon',
+  'Empresa Hiway',
+  'Comercial'
 ];
 
-const PRIORIDADES_DEMANDA: PrioridadDemanda[] = ['alta', 'media', 'baja'];
+export const ESTADOS_DEMANDA = [
+  'Solicitud',
+  'Evaluación',
+  'Pendiente Comité',
+  'Aprobado',
+  'Priorizado',
+  'En Ejecución',
+  'Completado',
+  'Pendiente información',
+  'Postergado',
+  'Pausado',
+  'Rechazado',
+  'Cancelado'
+];
 
-// Helper para determinar la etapa individual de cada proyecto
-const getStageFromItem = (item: Partial<DemandaItem>): string => {
-  if (item.etapa && ['Prospecto', 'Ficha', 'Solicitud', 'Aprobado', 'Rechazado'].includes(item.etapa)) {
-    return item.etapa;
-  }
-  // Si la ejecución fue aprobada en Prospecto pero aún no tiene resolución final, pasa a etapa 'Ficha' (Etapa 2)
-  if (item.estado === 'ejecución aprobada') {
-    return 'Ficha';
-  }
-  if (item.estado === 'finalizado') {
-    return 'Aprobado';
-  }
-  return 'Prospecto';
+export const DECISIONES_COMITE = [
+  { id: 'Pendiente', label: '⚪ Pendiente', badgeClass: 'bg-slate-100 text-slate-700 border-slate-300' },
+  { id: 'Aprobado', label: '🟢 Aprobado', badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold' },
+  { id: 'Postergado', label: '⏸️ Postergado', badgeClass: 'bg-amber-50 text-amber-900 border-amber-300' },
+  { id: 'Rechazado', label: '🔴 Rechazado', badgeClass: 'bg-red-100 text-red-800 border-red-300 font-bold' },
+];
+
+export const PRIORIDADES_DEMANDA = ['Alta', 'Media', 'Baja'];
+
+export const SEMAFOROS_DEMANDA = [
+  { id: 'Verde', label: '🟢 Verde', badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold' },
+  { id: 'Amarillo', label: '🟡 Amarillo', badgeClass: 'bg-amber-100 text-amber-800 border-amber-300 font-bold' },
+  { id: 'Rojo', label: '🔴 Rojo', badgeClass: 'bg-red-100 text-red-800 border-red-300 font-bold' },
+];
+
+export const ETAPAS_SEQUENTIAL = [
+  { id: 'Ingreso', shortLabel: '1. Ingreso', fullLabel: '1. Ingreso', icon: '🟡' },
+  { id: 'Evaluación', shortLabel: '2. Evaluación', fullLabel: '2. Evaluación', icon: '🔵' },
+  { id: 'Priorización', shortLabel: '3. Priorización', fullLabel: '3. Priorización', icon: '🟣' },
+  { id: 'Comité', shortLabel: '4. Comité', fullLabel: '4. Comité', icon: '🟦' },
+  { id: 'Ejecución', shortLabel: '5. Ejecución', fullLabel: '5. Ejecución', icon: '🟠' },
+  { id: 'Aprobación Usuario', shortLabel: '6. Apr. Usuario', fullLabel: '6. Aprobación Usuario', icon: '🟪' },
+  { id: 'Capacitación', shortLabel: '7. Capacitación', fullLabel: '7. Capacitación', icon: '🎓' },
+  { id: 'Cierre', shortLabel: '8. Cierre', fullLabel: '8. Cierre', icon: '🟢' },
+];
+
+const getDecisionComiteBadgeClass = (decision?: string): string => {
+  const match = DECISIONES_COMITE.find(d => d.id === decision);
+  return match ? match.badgeClass : 'bg-gray-100 text-gray-500 border-gray-200';
 };
 
-// Componente de Trazabilidad / Stepper del Ciclo de Vida del Proyecto ("Pedido viajando")
+const getSemaforoBadgeClass = (semaforo?: string): string => {
+  const match = SEMAFOROS_DEMANDA.find(s => s.id === semaforo);
+  return match ? match.badgeClass : 'bg-gray-100 text-gray-500 border-gray-200';
+};
+
+const getPrioridadBadgeClass = (p?: string): string => {
+  switch ((p || '').toLowerCase()) {
+    case 'alta': return 'bg-red-100 text-red-700 border-red-200 font-bold';
+    case 'media': return 'bg-amber-100 text-amber-800 border-amber-200';
+    case 'baja': return 'bg-blue-100 text-blue-700 border-blue-200';
+    default: return 'bg-gray-100 text-gray-700 border-gray-200';
+  }
+};
+
+const getEstadoBadgeClass = (e?: string): string => {
+  switch (e) {
+    case 'Aprobado': return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold';
+    case 'En Ejecución': return 'bg-orange-100 text-orange-800 border-orange-200 font-semibold';
+    case 'Completado': return 'bg-green-100 text-green-800 border-green-200 font-semibold';
+    case 'Rechazado': return 'bg-red-100 text-red-800 border-red-200 font-bold';
+    case 'Cancelado': return 'bg-rose-100 text-rose-800 border-rose-200 font-bold';
+    case 'Postergado': return 'bg-amber-50 text-amber-900 border-amber-200';
+    case 'Pausado': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    case 'Pendiente información': return 'bg-slate-100 text-slate-700 border-slate-200';
+    default: return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+  }
+};
+
+const getStageFromItem = (item: Partial<DemandaItem>): string => {
+  if (item.etapa && ETAPAS_SEQUENTIAL.some(s => s.id === item.etapa)) {
+    return item.etapa;
+  }
+  if (item.etapa === 'Solicitud' || item.etapa === 'Prospecto' || item.etapa === 'Ficha' || item.etapa === 'Levantamiento') return 'Ingreso';
+  if (item.etapa === 'Pendiente Comité') return 'Comité';
+  if (item.etapa === 'Priorizado') return 'Priorización';
+  if (item.etapa === 'En Ejecución') return 'Ejecución';
+  if (item.etapa === 'Completado') return 'Cierre';
+  return 'Ingreso';
+};
+
+const getEtapaBadgeClass = (etapa: string): string => {
+  switch (etapa) {
+    case 'Ingreso': return 'bg-amber-100 text-amber-800 border-amber-300';
+    case 'Evaluación': return 'bg-blue-100 text-blue-800 border-blue-300';
+    case 'Priorización': return 'bg-purple-100 text-purple-800 border-purple-300';
+    case 'Comité': return 'bg-sky-100 text-sky-800 border-sky-300';
+    case 'Ejecución': return 'bg-orange-100 text-orange-800 border-orange-300';
+    case 'Aprobación Usuario': return 'bg-indigo-100 text-indigo-800 border-indigo-300';
+    case 'Capacitación': return 'bg-teal-100 text-teal-800 border-teal-300';
+    case 'Cierre': return 'bg-green-100 text-green-800 border-green-300';
+    default: return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+  }
+};
+
+const calculateTiempoEstimadoAuto = (item: Partial<DemandaItem>): string => {
+  if (item.tiempoEstimadoCompleto) return item.tiempoEstimadoCompleto;
+  if (item.planificacionEstimada && item.fechaEstimadaEntrega) {
+    const inicio = new Date(item.planificacionEstimada);
+    const entrega = new Date(item.fechaEstimadaEntrega);
+    if (!isNaN(inicio.getTime()) && !isNaN(entrega.getTime())) {
+      const diffTime = entrega.getTime() - inicio.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays > 0) {
+        if (diffDays >= 30) {
+          const meses = (diffDays / 30).toFixed(1).replace('.0', '');
+          return `${diffDays} días (~${meses} ${meses === '1' ? 'mes' : 'meses'})`;
+        }
+        return `${diffDays} días`;
+      }
+    }
+  }
+  return '-';
+};
+
+// Componente Stepper de 8 Etapas ("Pedido viajando")
 const ProjectLifecycleStepper: React.FC<{
   currentStage: string;
   onStageChange: (stage: string) => void;
 }> = ({ currentStage, onStageChange }) => {
-  const stages = [
-    { id: 'Prospecto', label: '1. Prospecto', sublabel: 'Comercial', icon: '💼' },
-    { id: 'Ficha', label: '2. Ficha', sublabel: 'Proyecto', icon: '📄' },
-    { id: 'Solicitud', label: '3. Solicitud', sublabel: 'Formulario', icon: '📋' },
-    { id: 'Aprobado', label: '4. Resolución', sublabel: 'Final', icon: '🏁' },
-  ];
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
 
   const getStageIndex = (stage: string) => {
-    switch (stage) {
-      case 'Prospecto': return 0;
-      case 'Ficha': return 1;
-      case 'Solicitud': return 2;
-      case 'Aprobado': return 3;
-      case 'Rechazado': return 3;
-      default: return 1;
-    }
+    const idx = ETAPAS_SEQUENTIAL.findIndex(s => s.id === stage);
+    return idx !== -1 ? idx : 0;
   };
 
   const currentIndex = getStageIndex(currentStage);
-  const isRechazado = currentStage === 'Rechazado';
+  const currentSeqObj = ETAPAS_SEQUENTIAL.find(s => s.id === currentStage);
 
   return (
     <div className="bg-gradient-to-r from-slate-50 via-indigo-50/60 to-purple-50 p-3.5 rounded-xl border border-indigo-100 shadow-xs my-3 col-span-1 md:col-span-2">
@@ -61,34 +157,25 @@ const ProjectLifecycleStepper: React.FC<{
         <div className="flex items-center gap-1.5">
           <span className="text-base animate-pulse">📦</span>
           <span className="text-xs font-bold text-gray-800 uppercase tracking-wide">
-            Etapa del Proyecto (Trazabilidad)
+            Etapa del Proyecto (Trazabilidad 8 Pasos)
           </span>
         </div>
-        <span className={`px-2 py-0.5 text-xs font-extrabold rounded-full flex items-center gap-1 shadow-xs ${
-          isRechazado ? 'bg-red-100 text-red-700 border border-red-200' :
-          currentStage === 'Aprobado' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-          'bg-indigo-100 text-indigo-800 border border-indigo-200'
-        }`}>
-          {isRechazado ? '❌ Rechazado' :
-           currentStage === 'Aprobado' ? '✅ Aprobado' :
-           currentStage === 'Solicitud' ? '📋 En Solicitud' :
-           currentStage === 'Prospecto' ? '💼 Prospecto' : '📄 Ficha Creada'}
+        <span className={`px-2.5 py-0.5 text-xs font-extrabold rounded-full flex items-center gap-1 shadow-xs border ${getEtapaBadgeClass(currentStage)}`}>
+          {`${currentSeqObj?.icon || '🟡'} ${currentStage}`}
         </span>
       </div>
 
-      {/* Bar & Steps ("Pedido viajando") */}
-      <div className="relative my-3 px-2">
-        {/* Connecting Line */}
-        <div className="absolute top-3.5 left-6 right-6 h-1 bg-gray-200 rounded -z-0">
+      {/* Bar & Steps */}
+      <div className="relative my-3 px-1">
+        <div className="absolute top-4 left-6 right-6 h-1 bg-gray-200 rounded -z-0">
           <div 
-            className={`h-1 transition-all duration-500 rounded ${isRechazado ? 'bg-red-500' : 'bg-indigo-600'}`}
-            style={{ width: `${(currentIndex / 3) * 100}%` }}
+            className="h-1 transition-all duration-500 rounded bg-indigo-600"
+            style={{ width: `${(currentIndex / (ETAPAS_SEQUENTIAL.length - 1)) * 100}%` }}
           />
         </div>
 
-        {/* Steps Nodes */}
-        <div className="flex justify-between items-center relative z-10">
-          {stages.map((st, idx) => {
+        <div className="flex justify-between items-start relative z-10 w-full">
+          {ETAPAS_SEQUENTIAL.map((st, idx) => {
             const isCompleted = idx < currentIndex;
             const isCurrent = idx === currentIndex;
 
@@ -96,38 +183,32 @@ const ProjectLifecycleStepper: React.FC<{
               <div 
                 key={st.id} 
                 onClick={() => onStageChange(st.id)}
-                className="flex flex-col items-center cursor-pointer group"
-                title={`Cambiar a etapa: ${st.label}`}
+                className="flex flex-col items-center cursor-pointer group flex-1 min-w-0 px-0.5 text-center"
+                title={`Cambiar a etapa: ${st.fullLabel}`}
               >
-                {/* Active Moving Marker ("Proyecto aquí") */}
                 <div className="h-5 flex items-center justify-center mb-0.5">
                   {isCurrent && (
-                    <div className="animate-bounce flex items-center gap-0.5 bg-indigo-600 text-white text-[9px] px-1.5 py-0.5 rounded-full shadow-md font-bold">
+                    <div className="animate-bounce flex items-center gap-0.5 bg-indigo-600 text-white text-[9px] px-1.5 py-0.5 rounded-full shadow-md font-bold whitespace-nowrap">
                       <span>🚀</span>
-                      <span>Proyecto</span>
+                      <span className="hidden sm:inline">Aquí</span>
                     </div>
                   )}
                 </div>
 
-                {/* Node Circle */}
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 transform group-hover:scale-110 shadow-xs ${
-                  isCurrent ? (isRechazado ? 'bg-red-600 text-white ring-4 ring-red-100 scale-110' : 'bg-indigo-600 text-white ring-4 ring-indigo-100 scale-110') :
+                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 transform group-hover:scale-110 shadow-xs ${
+                  isCurrent ? 'bg-indigo-600 text-white ring-4 ring-indigo-100 scale-110' :
                   isCompleted ? 'bg-emerald-500 text-white' :
                   'bg-white border-2 border-gray-300 text-gray-400'
                 }`}>
                   {isCompleted ? '✓' : st.icon}
                 </div>
 
-                {/* Step Labels */}
-                <div className="text-center mt-1">
-                  <span className={`block text-[10px] font-bold leading-tight ${
+                <div className="mt-1.5 w-full">
+                  <span className={`block text-[10px] font-bold leading-tight truncate ${
                     isCurrent ? 'text-indigo-900 font-extrabold' :
-                    isCompleted ? 'text-emerald-700' : 'text-gray-400'
-                  }`}>
-                    {st.label}
-                  </span>
-                  <span className="block text-[9px] text-gray-500 leading-none mt-0.5">
-                    {st.sublabel}
+                    isCompleted ? 'text-emerald-700' : 'text-gray-500'
+                  }`} title={st.fullLabel}>
+                    {st.shortLabel}
                   </span>
                 </div>
               </div>
@@ -136,36 +217,39 @@ const ProjectLifecycleStepper: React.FC<{
         </div>
       </div>
 
-      {/* Direct Selector Options / Buttons */}
-      <div className="flex flex-wrap items-center justify-between gap-1 mt-3 pt-2 border-t border-indigo-100/60">
-        <span className="text-[10px] text-gray-500 font-semibold">Seleccionar etapa:</span>
-        <div className="flex gap-1">
-          {stages.map(st => (
-            <button
-              key={st.id}
-              type="button"
-              onClick={() => onStageChange(st.id)}
-              className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
-                currentStage === st.id
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-white text-gray-600 hover:bg-indigo-50 border border-gray-200'
-              }`}
-            >
-              {st.icon} {st.id}
-            </button>
-          ))}
+      <div className="mt-2 pt-2 border-t border-indigo-100/60">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-[10px] text-gray-500 font-medium">Selector de Etapas:</span>
           <button
             type="button"
-            onClick={() => onStageChange('Rechazado')}
-            className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-all ${
-              currentStage === 'Rechazado'
-                ? 'bg-red-600 text-white shadow-xs'
-                : 'bg-white text-red-600 hover:bg-red-50 border border-red-200'
-            }`}
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-all border border-indigo-200 cursor-pointer"
           >
-            ❌ Rechazado
+            <span>⚙️ {isExpanded ? 'Ocultar Opciones' : 'Cambiar Etapa (8 Opciones)'}</span>
+            <span className="text-[9px]">{isExpanded ? '🔼' : '🔽'}</span>
           </button>
         </div>
+
+        {isExpanded && (
+          <div className="space-y-2 mt-2 pt-2 border-t border-indigo-100/40 text-xs">
+            <div className="flex flex-wrap gap-1">
+              {ETAPAS_SEQUENTIAL.map(st => (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => onStageChange(st.id)}
+                  className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${
+                    currentStage === st.id
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-white text-gray-600 hover:bg-indigo-50 border border-gray-200'
+                  }`}
+                >
+                  {st.icon} {st.fullLabel}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -174,45 +258,97 @@ const ProjectLifecycleStepper: React.FC<{
 const GestionDemanda: React.FC = () => {
   const navigate = useNavigate();
   const [demandas, setDemandas] = useState<DemandaItem[]>([]);
+  const [profesionales, setProfesionales] = useState<{ id: string; nombre: string }[]>([]);
+  const [prospectos, setProspectos] = useState<{ id: string; codigo: string; nombreProyecto: string; cliente?: string }[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filtros y Búsqueda
+  // Filtros
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterTipo, setFilterTipo] = useState<string>('todos');
-  const [filterPrioridad, setFilterPrioridad] = useState<string>('todas');
+  const [filterArea, setFilterArea] = useState<string>('todas');
   const [filterEstado, setFilterEstado] = useState<string>('todos');
+  const [filterDecisionComite, setFilterDecisionComite] = useState<string>('todos');
+  const [filterPrioridad, setFilterPrioridad] = useState<string>('todas');
 
-  // Modales y formularios
+  // Modales
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<DemandaItem | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // Form State
+  // Form State (observaciones totalmente vacío por defecto sin texto automático)
   const [formData, setFormData] = useState<Partial<DemandaItem>>({
+    codigo: '',
     proyecto: '',
     tipoProyecto: 'Interno',
-    prioridad: 'media',
-    estado: 'solicitado',
-    etapa: 'Levantamiento',
-    area: '',
+    fechaSolicitud: new Date().toISOString().split('T')[0],
+    area: 'Comercial',
+    responsableTI: '',
+    estado: 'Solicitud',
+    decisionComite: 'Pendiente',
+    prioridad: 'Media',
+    semaforo: 'Verde',
+    etapa: 'Ingreso',
+    fechaComite: '',
     planificacionEstimada: new Date().toISOString().split('T')[0],
     planificacionReal: '',
     fechaEstimadaEntrega: '',
     fechaEntregaReal: '',
-    responsableTI: '',
+    tiempoEstimadoCompleto: '',
+    tiempoEstimadoAjuste: '',
     solicitante: '',
     observaciones: ''
   });
 
-  // Cargar datos al iniciar
-  const loadDemandas = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await demandaService.getAll();
-      setDemandas(data);
+      const [demandasData, profRes, prospectosRes] = await Promise.all([
+        demandaService.getAll(),
+        api.get('/profesionales').catch(() => ({ data: [] })),
+        api.get('/fichas-prospecto').catch(() => ({ data: [] }))
+      ]);
+
+      const rawProspectos = prospectosRes.data?.data || prospectosRes.data || [];
+      const parsedProspectos = Array.isArray(rawProspectos) ? rawProspectos.map((p: any) => ({
+        id: String(p.id),
+        codigo: p.codigo || p.Codigo || `PR-${p.id}`,
+        nombreProyecto: p.nombreProyecto || p.NombreProyecto || '',
+        cliente: p.cliente || p.Cliente || ''
+      })) : [];
+
+      setProspectos(parsedProspectos);
+
+      const rawProfs = profRes.data?.data || profRes.data || [];
+      if (Array.isArray(rawProfs)) {
+        setProfesionales(rawProfs.map((p: any) => ({ id: String(p.id), nombre: p.nombre || p.nombreProyecto || 'Colaborador' })));
+      }
+
+      const cleanedDemandas = (demandasData || []).map(d => {
+        const matchingProspecto = parsedProspectos.find(p => 
+          p.nombreProyecto.trim().toLowerCase() === (d.proyecto || '').trim().toLowerCase()
+        );
+        
+        const finalCodigo = (d.codigo && !d.codigo.startsWith('DEM-')) 
+          ? d.codigo 
+          : (matchingProspecto ? matchingProspecto.codigo : (d.codigo || ''));
+
+        const obs = d.observaciones || '';
+        const isAutoText = obs.includes('Actualizado desde Prospect') || 
+                           obs.includes('Sincronizado') || 
+                           obs.includes('Ficha creada') || 
+                           obs.includes('Traspasado desde');
+        
+        return {
+          ...d,
+          codigo: finalCodigo,
+          observaciones: isAutoText ? '' : obs
+        };
+      });
+
+      setDemandas(cleanedDemandas);
     } catch (err: any) {
       console.error('Error cargando gestión de demanda:', err);
       setError('Error al cargar los registros de demanda');
@@ -222,91 +358,60 @@ const GestionDemanda: React.FC = () => {
   };
 
   useEffect(() => {
-    loadDemandas();
+    loadData();
   }, []);
 
-  // Manejar cambio rápido de Prioridad desde la lista
-  const handleQuickPrioridadChange = async (id: string, newPrioridad: PrioridadDemanda) => {
+  // Quick update helpers
+  const handleQuickUpdateField = async (id: string, fields: Partial<DemandaItem>) => {
     try {
       setUpdatingId(id);
-      const updated = await demandaService.updatePrioridad(id, newPrioridad);
+      const updated = await demandaService.update(id, fields);
       setDemandas(prev => prev.map(item => item.id === id ? updated : item));
     } catch (err) {
-      console.error('Error actualizando prioridad rápida:', err);
+      console.error('Error en actualización rápida:', err);
     } finally {
       setUpdatingId(null);
     }
   };
 
-  // Conversión/Pasaje a Ficha de Proyecto (Manual al presionar el botón)
   const handleConvertToFicha = async (item: DemandaItem) => {
-    try {
-      // Actualizar la etapa a 'Ficha' para reflejar que pasó a Ficha de Proyecto
-      const updated = await demandaService.update(item.id, { etapa: 'Ficha' });
-      setDemandas(prev => prev.map(d => d.id === item.id ? updated : d));
-      navigate('/fichas-proyecto', { state: { convertFromDemanda: updated } });
-    } catch (e) {
-      console.warn('Error al actualizar etapa a Ficha:', e);
-      navigate('/fichas-proyecto', { state: { convertFromDemanda: item } });
-    }
+    navigate('/fichas-proyecto', { state: { convertFromDemanda: item } });
   };
 
-  // Manejar cambio rápido de Estado desde la lista
-  const handleQuickEstadoChange = async (id: string, newEstado: EstadoDemanda) => {
-    try {
-      setUpdatingId(id);
-      const updated = await demandaService.updateEstado(id, newEstado);
-      setDemandas(prev => prev.map(item => item.id === id ? updated : item));
-    } catch (err) {
-      console.error('Error actualizando estado rápido:', err);
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  // Manejar cambio rápido de Etapa desde la lista
-  const handleQuickEtapaChange = async (id: string, newEtapa: string) => {
-    try {
-      setUpdatingId(id);
-      const updated = await demandaService.update(id, { etapa: newEtapa });
-      setDemandas(prev => prev.map(item => item.id === id ? updated : item));
-    } catch (err) {
-      console.error('Error actualizando etapa rápida:', err);
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  // Abrir Modal para crear
   const handleOpenCreateModal = () => {
     setEditingItem(null);
+    const firstProspecto = prospectos[0];
     setFormData({
-      proyecto: '',
+      codigo: firstProspecto ? firstProspecto.codigo : '',
+      proyecto: firstProspecto ? firstProspecto.nombreProyecto : '',
       tipoProyecto: 'Interno',
-      prioridad: 'media',
-      estado: 'solicitado',
-      etapa: 'Ficha',
-      area: '',
+      fechaSolicitud: new Date().toISOString().split('T')[0],
+      area: 'Comercial',
+      responsableTI: profesionales[0]?.nombre || '',
+      estado: 'Solicitud',
+      decisionComite: 'Pendiente',
+      prioridad: 'Media',
+      semaforo: 'Verde',
+      etapa: 'Ingreso',
+      fechaComite: '',
       planificacionEstimada: new Date().toISOString().split('T')[0],
       planificacionReal: '',
       fechaEstimadaEntrega: '',
       fechaEntregaReal: '',
-      responsableTI: '',
-      solicitante: '',
+      tiempoEstimadoCompleto: '',
+      tiempoEstimadoAjuste: '',
+      solicitante: firstProspecto ? (firstProspecto.cliente || '') : '',
       observaciones: ''
     });
     setIsModalOpen(true);
   };
 
-  // Abrir Modal para editar
   const handleOpenEditModal = (item: DemandaItem) => {
     setEditingItem(item);
-    const itemStage = getStageFromItem(item);
-    setFormData({ ...item, etapa: itemStage });
+    setFormData({ ...item, etapa: getStageFromItem(item) });
     setIsModalOpen(true);
   };
 
-  // Eliminar demanda
   const handleDelete = async (id: string, proyecto: string) => {
     if (window.confirm(`¿Estás seguro de eliminar el registro "${proyecto}"?`)) {
       try {
@@ -318,11 +423,10 @@ const GestionDemanda: React.FC = () => {
     }
   };
 
-  // Guardar formulario (Crear o Editar)
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.proyecto || !formData.solicitante) {
-      alert('Por favor complete los campos obligatorios: Proyecto y Solicitante.');
+    if (!formData.proyecto) {
+      alert('Por favor ingrese el Nombre del Proyecto.');
       return;
     }
 
@@ -336,7 +440,6 @@ const GestionDemanda: React.FC = () => {
         itemSaved = await demandaService.create(formData);
         setDemandas(prev => [itemSaved, ...prev]);
       }
-
       setIsModalOpen(false);
     } catch (err) {
       console.error('Error al guardar demanda:', err);
@@ -346,89 +449,42 @@ const GestionDemanda: React.FC = () => {
     }
   };
 
-  // Calcular Variación de Días entre Fecha Estimada de Entrega y Fecha Real (o fecha actual)
-  const calculateVariacion = (fechaEstimada?: string, fechaReal?: string): { dias: number | null, texto: string, colorClass: string } => {
-    if (!fechaEstimada) {
-      return { dias: null, texto: 'Sin fecha', colorClass: 'bg-gray-100 text-gray-600' };
-    }
-
-    const est = new Date(fechaEstimada);
-    const refDate = fechaReal ? new Date(fechaReal) : new Date();
-
-    // Eliminar hora
-    est.setHours(0, 0, 0, 0);
-    refDate.setHours(0, 0, 0, 0);
-
-    const diffTime = refDate.getTime() - est.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) {
-      return { dias: 0, texto: 'A tiempo', colorClass: 'bg-green-100 text-green-800 font-semibold' };
-    } else if (diffDays < 0) {
-      return { dias: diffDays, texto: `${Math.abs(diffDays)}d anticipado`, colorClass: 'bg-emerald-100 text-emerald-800 font-semibold' };
-    } else {
-      return { dias: diffDays, texto: `+${diffDays}d atraso`, colorClass: 'bg-red-100 text-red-800 font-semibold' };
-    }
-  };
-
-  // Lista filtrada
   const filteredDemandas = useMemo(() => {
     return demandas.filter(item => {
       const matchSearch =
+        (item.codigo || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.proyecto.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.solicitante.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.responsableTI.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.area.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.etapa.toLowerCase().includes(searchQuery.toLowerCase());
+        (item.solicitante || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (item.responsableTI || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (item.area || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (item.etapa || '').toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchTipo = filterTipo === 'todos' || item.tipoProyecto === filterTipo;
-      const matchPrioridad = filterPrioridad === 'todas' || item.prioridad === filterPrioridad;
+      const matchArea = filterArea === 'todas' || item.area === filterArea;
       const matchEstado = filterEstado === 'todos' || item.estado === filterEstado;
+      const matchDecision = filterDecisionComite === 'todos' || item.decisionComite === filterDecisionComite;
+      const matchPrioridad = filterPrioridad === 'todas' || item.prioridad === filterPrioridad;
 
-      return matchSearch && matchTipo && matchPrioridad && matchEstado;
+      return matchSearch && matchTipo && matchArea && matchEstado && matchDecision && matchPrioridad;
     });
-  }, [demandas, searchQuery, filterTipo, filterPrioridad, filterEstado]);
+  }, [demandas, searchQuery, filterTipo, filterArea, filterEstado, filterDecisionComite, filterPrioridad]);
 
-  // Estadísticas rápidas
   const stats = useMemo(() => {
     const total = demandas.length;
     const internos = demandas.filter(d => d.tipoProyecto === 'Interno').length;
     const externos = demandas.filter(d => d.tipoProyecto === 'Externo').length;
-    const altaPrioridad = demandas.filter(d => d.prioridad === 'alta').length;
-    const enProceso = demandas.filter(d => d.estado === 'en proceso' || d.estado === 'ejecución aprobada').length;
-    const finalizados = demandas.filter(d => d.estado === 'finalizado').length;
+    const altaPrioridad = demandas.filter(d => (d.prioridad || '').toLowerCase() === 'alta').length;
+    const enProceso = demandas.filter(d => d.estado === 'En Ejecución' || d.estado === 'Aprobado').length;
+    const completados = demandas.filter(d => d.estado === 'Completado').length;
 
-    return { total, internos, externos, altaPrioridad, enProceso, finalizados };
+    return { total, internos, externos, altaPrioridad, enProceso, completados };
   }, [demandas]);
-
-  // Clases de estilo para prioridades
-  const getPrioridadBadgeClass = (p: PrioridadDemanda) => {
-    switch (p) {
-      case 'alta': return 'bg-red-100 text-red-700 border-red-200';
-      case 'media': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'baja': return 'bg-blue-100 text-blue-700 border-blue-200';
-      default: return 'bg-gray-100 text-gray-700 border-gray-200';
-    }
-  };
-
-  // Clases de estilo para estados
-  const getEstadoBadgeClass = (e: EstadoDemanda) => {
-    switch (e) {
-      case 'backlog': return 'bg-slate-100 text-slate-700 border-slate-200';
-      case 'solicitado': return 'bg-sky-100 text-sky-800 border-sky-200';
-      case 'ejecución aprobada': return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold';
-      case 'en proceso': return 'bg-blue-100 text-blue-800 border-blue-200 font-semibold';
-      case 'en espera cierre del usuario': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'finalizado': return 'bg-green-100 text-green-800 border-green-200 font-semibold';
-      default: return 'bg-gray-100 text-gray-700 border-gray-200';
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header Bar */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-[98%] mx-auto px-4 py-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="flex items-center space-x-3">
               <button
@@ -444,18 +500,15 @@ const GestionDemanda: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Gestión de la Demanda</h1>
                   <span className="px-2.5 py-0.5 text-xs font-semibold bg-indigo-100 text-indigo-800 rounded-full">
-                    Internos y Externos
+                    Control Consolidado
                   </span>
                 </div>
-                <p className="text-xs sm:text-sm text-gray-500">
-                  Control y recepción de proyectos, asignación TI y seguimiento de fechas
-                </p>
               </div>
             </div>
 
             <div className="flex items-center space-x-3 w-full sm:w-auto">
               <button
-                onClick={loadDemandas}
+                onClick={loadData}
                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
                 title="Recargar datos"
               >
@@ -471,7 +524,7 @@ const GestionDemanda: React.FC = () => {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                <span>Nuevo proyecto</span>
+                <span>Nuevo Requerimiento</span>
               </button>
             </div>
           </div>
@@ -479,65 +532,52 @@ const GestionDemanda: React.FC = () => {
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="max-w-[98%] mx-auto px-4 py-6">
 
         {/* Tarjetas de Métricas */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
             <p className="text-xs font-medium text-gray-500">Total Solicitudes</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
-            <span className="text-[11px] text-gray-400">Demanda consolidada</span>
           </div>
-
           <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
-            <p className="text-xs font-medium text-gray-500">Proyectos Internos</p>
+            <p className="text-xs font-medium text-gray-500">Internos</p>
             <p className="text-2xl font-bold text-indigo-600 mt-1">{stats.internos}</p>
-            <span className="text-[11px] text-indigo-500 font-medium">Uso corporativo</span>
           </div>
-
           <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
-            <p className="text-xs font-medium text-gray-500">Proyectos Externos</p>
+            <p className="text-xs font-medium text-gray-500">Externos</p>
             <p className="text-2xl font-bold text-purple-600 mt-1">{stats.externos}</p>
-            <span className="text-[11px] text-purple-500 font-medium">Clientes / Terceros</span>
           </div>
-
           <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
             <p className="text-xs font-medium text-gray-500">Alta Prioridad</p>
             <p className="text-2xl font-bold text-red-600 mt-1">{stats.altaPrioridad}</p>
-            <span className="text-[11px] text-red-500 font-medium">Atención prioritaria</span>
           </div>
-
           <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
-            <p className="text-xs font-medium text-gray-500">En Proceso</p>
+            <p className="text-xs font-medium text-gray-500">En Ejecución</p>
             <p className="text-2xl font-bold text-blue-600 mt-1">{stats.enProceso}</p>
-            <span className="text-[11px] text-blue-500 font-medium">En ejecución active</span>
           </div>
-
           <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
-            <p className="text-xs font-medium text-gray-500">Finalizados</p>
-            <p className="text-2xl font-bold text-green-600 mt-1">{stats.finalizados}</p>
-            <span className="text-[11px] text-green-500 font-medium">Completados</span>
+            <p className="text-xs font-medium text-gray-500">Completados</p>
+            <p className="text-2xl font-bold text-green-600 mt-1">{stats.completados}</p>
           </div>
         </div>
 
         {/* Toolbar de Búsqueda y Filtros */}
         <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4 mb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Buscador */}
-            <div className="relative">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
+            <div className="relative lg:col-span-2">
               <input
                 type="text"
-                placeholder="Buscar por proyecto, solicitante, TI..."
+                placeholder="Buscar por código, proyecto, área, TI..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
               />
               <svg className="w-4 h-4 text-gray-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
 
-            {/* Filtro Tipo Proyecto */}
             <div>
               <select
                 value={filterTipo}
@@ -550,21 +590,19 @@ const GestionDemanda: React.FC = () => {
               </select>
             </div>
 
-            {/* Filtro Prioridad */}
             <div>
               <select
-                value={filterPrioridad}
-                onChange={(e) => setFilterPrioridad(e.target.value)}
+                value={filterArea}
+                onChange={(e) => setFilterArea(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="todas">Prioridad: Todas</option>
-                {PRIORIDADES_DEMANDA.map(p => (
-                  <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                <option value="todas">Área: Todas</option>
+                {AREAS_SOLICITANTES.map(a => (
+                  <option key={a} value={a}>{a}</option>
                 ))}
               </select>
             </div>
 
-            {/* Filtro Estado */}
             <div>
               <select
                 value={filterEstado}
@@ -573,14 +611,40 @@ const GestionDemanda: React.FC = () => {
               >
                 <option value="todos">Estado: Todos</option>
                 {ESTADOS_DEMANDA.map(est => (
-                  <option key={est} value={est}>{est.charAt(0).toUpperCase() + est.slice(1)}</option>
+                  <option key={est} value={est}>{est}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <select
+                value={filterDecisionComite}
+                onChange={(e) => setFilterDecisionComite(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="todos">Decisión Comité: Todas</option>
+                {DECISIONES_COMITE.map(d => (
+                  <option key={d.id} value={d.id}>{d.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <select
+                value={filterPrioridad}
+                onChange={(e) => setFilterPrioridad(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="todas">Prioridad: Todas</option>
+                {PRIORIDADES_DEMANDA.map(p => (
+                  <option key={p} value={p}>{p}</option>
                 ))}
               </select>
             </div>
           </div>
         </div>
 
-        {/* Tabla Principal */}
+        {/* Tabla Principal de Gestión de la Demanda (Orden Exacto Solicitado) */}
         <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
           {loading ? (
             <div className="p-12 text-center">
@@ -590,7 +654,7 @@ const GestionDemanda: React.FC = () => {
           ) : error ? (
             <div className="p-8 text-center bg-red-50 text-red-600">
               <p>{error}</p>
-              <button onClick={loadDemandas} className="mt-2 text-xs font-semibold underline">Reintentar</button>
+              <button onClick={loadData} className="mt-2 text-xs font-semibold underline">Reintentar</button>
             </div>
           ) : filteredDemandas.length === 0 ? (
             <div className="p-12 text-center">
@@ -598,142 +662,188 @@ const GestionDemanda: React.FC = () => {
                 📋
               </div>
               <p className="text-gray-700 font-medium">No se encontraron registros de demanda</p>
-              <p className="text-gray-500 text-xs mt-1">Prueba ajustando los filtros de búsqueda o agrega una nueva demanda.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 text-left text-xs">
                 <thead className="bg-slate-100 text-gray-700 font-semibold uppercase tracking-wider">
                   <tr>
-                    <th className="px-4 py-3 min-w-[200px]">Proyecto & Tipo</th>
-                    <th className="px-3 py-3 min-w-[130px]">Prioridad (Editable)</th>
-                    <th className="px-3 py-3 min-w-[180px]">Estado (Editable)</th>
-                    <th className="px-3 py-3">Etapa</th>
-                    <th className="px-3 py-3">Área</th>
-                    <th className="px-3 py-3">Planif. (Est / Real)</th>
-                    <th className="px-3 py-3">Entrega (Est / Real)</th>
-                    <th className="px-3 py-3 text-center">Variación Entrega</th>
-                    <th className="px-3 py-3">Responsable TI</th>
-                    <th className="px-3 py-3">Solicitante</th>
-                    <th className="px-4 py-3 text-right">Acciones</th>
+                    <th className="px-3 py-3 min-w-[100px]">Código</th>
+                    <th className="px-4 py-3 min-w-[200px]">Nombre Proyecto</th>
+                    <th className="px-3 py-3 min-w-[130px]">Fecha Solicitud</th>
+                    <th className="px-3 py-3 min-w-[160px]">Área Solicitante</th>
+                    <th className="px-3 py-3 min-w-[170px]">Responsable TI</th>
+                    <th className="px-3 py-3 min-w-[150px]">Estado</th>
+                    <th className="px-3 py-3 min-w-[140px] text-purple-700 font-bold">Decisión Comité</th>
+                    <th className="px-3 py-3 min-w-[110px]">Prioridad</th>
+                    <th className="px-3 py-3 min-w-[110px]">Semáforo</th>
+                    <th className="px-3 py-3 min-w-[170px]">Etapa</th>
+                    <th className="px-3 py-3 min-w-[130px] text-purple-700 font-bold">Fecha Comité</th>
+                    <th className="px-3 py-3 min-w-[140px]">PLANIF. (EST / REAL)</th>
+                    <th className="px-3 py-3 min-w-[140px]">ENTREGA (EST / REAL)</th>
+                    <th className="px-3 py-3 min-w-[150px]">Tiempo Est. Completo</th>
+                    <th className="px-3 py-3 min-w-[140px]">Tiempo Est. Ajuste</th>
+                    <th className="px-3 py-3 min-w-[160px]">Observación</th>
+                    <th className="px-4 py-3 text-right sticky right-0 bg-slate-100 shadow-xs">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {filteredDemandas.map((item) => {
-                    const variacion = calculateVariacion(item.fechaEstimadaEntrega, item.fechaEntregaReal);
                     const isUpdatingThis = updatingId === item.id;
-                    const isAprobado = item.estado === 'ejecución aprobada';
+                    const isAprobado = item.estado === 'Aprobado';
 
                     return (
-                      <tr key={item.id} className={`transition-colors ${isAprobado ? 'bg-emerald-50/80 hover:bg-emerald-100/80 border-l-4 border-l-emerald-500' : 'hover:bg-slate-50/80'}`}>
-                        {/* Proyecto & Tipo */}
+                      <tr key={item.id} className={`transition-colors ${isAprobado ? 'bg-emerald-50/70 hover:bg-emerald-100/70' : 'hover:bg-slate-50/80'}`}>
+                        
+                        {/* 1. Código (Código oficial de Prospecto) */}
+                        <td className="px-3 py-3 font-mono font-bold text-indigo-700 whitespace-nowrap">
+                          {item.codigo && !item.codigo.startsWith('DEM-') 
+                            ? item.codigo 
+                            : (prospectos.find(p => p.nombreProyecto.trim().toLowerCase() === (item.proyecto || '').trim().toLowerCase())?.codigo || item.codigo || '-')}
+                        </td>
+
+                        {/* 2. Nombre Proyecto */}
                         <td className="px-4 py-3 font-medium text-gray-900">
-                          <div className="font-semibold text-sm text-gray-900 leading-snug flex items-center gap-2">
-                            <span>{item.proyecto}</span>
-                            {isAprobado && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-bold bg-emerald-600 text-white rounded shadow-xs">
-                                🟢 Aprobado
-                              </span>
-                            )}
+                          <div className="font-semibold text-sm text-gray-900 leading-snug">
+                            {item.proyecto}
                           </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
-                              item.tipoProyecto === 'Interno' ? 'bg-indigo-100 text-indigo-800' : 'bg-purple-100 text-purple-800'
-                            }`}>
-                              {item.tipoProyecto}
-                            </span>
-                            {item.observaciones && (
-                              <span className="text-gray-400 text-[11px] truncate max-w-[150px]" title={item.observaciones}>
-                                📝 {item.observaciones}
-                              </span>
-                            )}
-                          </div>
+                          <span className={`inline-block px-1.5 py-0.5 mt-1 rounded text-[10px] font-semibold uppercase ${
+                            item.tipoProyecto === 'Interno' ? 'bg-indigo-100 text-indigo-800' : 'bg-purple-100 text-purple-800'
+                          }`}>
+                            {item.tipoProyecto || 'Interno'}
+                          </span>
                         </td>
 
-                        {/* Prioridad con SELECTOR RÁPIDO DIRECTO EN LA LISTA */}
-                        <td className="px-3 py-3">
-                          <div className="relative">
-                            <select
-                              value={item.prioridad}
-                              disabled={isUpdatingThis}
-                              onChange={(e) => handleQuickPrioridadChange(item.id, e.target.value as PrioridadDemanda)}
-                              className={`px-2.5 py-1 text-xs font-semibold rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs ${getPrioridadBadgeClass(item.prioridad)}`}
-                            >
-                              <option value="alta" className="bg-white text-red-700">🔴 Alta</option>
-                              <option value="media" className="bg-white text-amber-800">🟡 Media</option>
-                              <option value="baja" className="bg-white text-blue-700">🔵 Baja</option>
-                            </select>
-                          </div>
+                        {/* 3. Fecha Solicitud */}
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <input
+                            type="date"
+                            value={item.fechaSolicitud || ''}
+                            disabled={isUpdatingThis}
+                            onChange={(e) => handleQuickUpdateField(item.id, { fechaSolicitud: e.target.value })}
+                            className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-indigo-500 bg-white cursor-pointer"
+                          />
                         </td>
 
-                        {/* Estado con SELECTOR RÁPIDO DIRECTO EN LA LISTA */}
-                        <td className="px-3 py-3">
-                          <div className="relative">
-                            <select
-                              value={item.estado}
-                              disabled={isUpdatingThis}
-                              onChange={(e) => handleQuickEstadoChange(item.id, e.target.value as EstadoDemanda)}
-                              className={`px-2.5 py-1 text-xs rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs ${getEstadoBadgeClass(item.estado)}`}
-                            >
-                              <option value="backlog" className="bg-white text-slate-700">Backlog</option>
-                              <option value="solicitado" className="bg-white text-sky-800">Solicitado</option>
-                              <option value="ejecución aprobada" className="bg-emerald-600 text-white font-bold">🟢 Ejecución Aprobada</option>
-                              <option value="en proceso" className="bg-white text-blue-800">En Proceso</option>
-                              <option value="en espera cierre del usuario" className="bg-white text-amber-800">En Espera Cierre Usuario</option>
-                              <option value="finalizado" className="bg-white text-green-800">Finalizado</option>
-                            </select>
-                          </div>
+                        {/* 4. Área Solicitante */}
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <select
+                            value={item.area || 'Comercial'}
+                            disabled={isUpdatingThis}
+                            onChange={(e) => handleQuickUpdateField(item.id, { area: e.target.value })}
+                            className="px-2 py-1 text-xs font-medium rounded-lg border border-gray-300 focus:ring-1 focus:ring-indigo-500 bg-white cursor-pointer max-w-[150px] truncate"
+                          >
+                            {AREAS_SOLICITANTES.map(a => (
+                              <option key={a} value={a}>{a}</option>
+                            ))}
+                          </select>
                         </td>
 
-                        {/* Etapa (Trazabilidad con seguidor visual) */}
-                        <td className="px-3 py-3 text-gray-700 min-w-[165px]">
+                        {/* 5. Responsable TI (Colaboradores Registrados) */}
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <select
+                            value={item.responsableTI || ''}
+                            disabled={isUpdatingThis}
+                            onChange={(e) => handleQuickUpdateField(item.id, { responsableTI: e.target.value })}
+                            className="px-2 py-1 text-xs font-semibold text-gray-800 rounded-lg border border-indigo-200 focus:ring-1 focus:ring-indigo-500 bg-indigo-50/50 cursor-pointer max-w-[160px] truncate"
+                          >
+                            <option value="">- No asignado -</option>
+                            {profesionales.map(p => (
+                              <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* 6. Estado */}
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <select
+                            value={item.estado || 'Solicitud'}
+                            disabled={isUpdatingThis}
+                            onChange={(e) => handleQuickUpdateField(item.id, { estado: e.target.value })}
+                            className={`px-2.5 py-1 text-xs rounded-lg border focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs ${getEstadoBadgeClass(item.estado)}`}
+                          >
+                            {ESTADOS_DEMANDA.map(est => (
+                              <option key={est} value={est} className="bg-white text-gray-800">{est}</option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* 7. Decisión del Comité */}
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <select
+                            value={item.decisionComite || 'Pendiente'}
+                            disabled={isUpdatingThis}
+                            onChange={(e) => handleQuickUpdateField(item.id, { decisionComite: e.target.value })}
+                            className={`px-2.5 py-1 text-xs font-semibold rounded-lg border focus:ring-2 focus:ring-purple-500 cursor-pointer shadow-2xs ${getDecisionComiteBadgeClass(item.decisionComite)}`}
+                          >
+                            {DECISIONES_COMITE.map(d => (
+                              <option key={d.id} value={d.id} className="bg-white text-gray-800">{d.label}</option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* 8. Prioridad */}
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <select
+                            value={item.prioridad || 'Media'}
+                            disabled={isUpdatingThis}
+                            onChange={(e) => handleQuickUpdateField(item.id, { prioridad: e.target.value })}
+                            className={`px-2 py-1 text-xs font-semibold rounded-lg border focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs ${getPrioridadBadgeClass(item.prioridad)}`}
+                          >
+                            {PRIORIDADES_DEMANDA.map(p => (
+                              <option key={p} value={p} className="bg-white text-gray-800">{p}</option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* 9. Semáforo */}
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <select
+                            value={item.semaforo || 'Verde'}
+                            disabled={isUpdatingThis}
+                            onChange={(e) => handleQuickUpdateField(item.id, { semaforo: e.target.value })}
+                            className={`px-2 py-1 text-xs font-bold rounded-lg border focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs ${getSemaforoBadgeClass(item.semaforo)}`}
+                          >
+                            {SEMAFOROS_DEMANDA.map(s => (
+                              <option key={s.id} value={s.id} className="bg-white text-gray-800">{s.label}</option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* 10. Etapa */}
+                        <td className="px-3 py-3 text-gray-700 min-w-[170px]">
                           {(() => {
                             const stage = getStageFromItem(item);
-                            const stages = [
-                              { id: 'Prospecto', label: 'Prospecto', icon: '💼' },
-                              { id: 'Ficha', label: 'Ficha', icon: '📄' },
-                              { id: 'Solicitud', label: 'Solicitud', icon: '📋' },
-                              { id: 'Aprobado', label: 'Aprobado', icon: '✅' },
-                            ];
-                            const stageIndex = stage === 'Prospecto' ? 0 : stage === 'Solicitud' ? 2 : (stage === 'Aprobado' || stage === 'Rechazado') ? 3 : 1;
-                            const isRechazado = stage === 'Rechazado';
+                            const stageIndex = ETAPAS_SEQUENTIAL.findIndex(s => s.id === stage);
 
                             return (
                               <div className="space-y-1">
-                                <div className="flex items-center gap-1">
-                                  <select
-                                    value={stage}
-                                    disabled={isUpdatingThis}
-                                    onChange={(e) => handleQuickEtapaChange(item.id, e.target.value)}
-                                    className={`px-2 py-0.5 text-[10px] font-bold rounded-full border cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs ${
-                                      isRechazado ? 'bg-red-100 text-red-700 border-red-200' :
-                                      stage === 'Aprobado' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                                      stage === 'Solicitud' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' :
-                                      stage === 'Prospecto' ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                                      'bg-blue-100 text-blue-800 border-blue-200'
-                                    }`}
-                                  >
-                                    <option value="Prospecto">💼 1. Prospecto</option>
-                                    <option value="Ficha">📄 2. Ficha</option>
-                                    <option value="Solicitud">📋 3. Solicitud</option>
-                                    <option value="Aprobado">✅ 4. Aprobado</option>
-                                    <option value="Rechazado">❌ 4. Rechazado</option>
-                                  </select>
-                                </div>
+                                <select
+                                  value={stage}
+                                  disabled={isUpdatingThis}
+                                  onChange={(e) => handleQuickUpdateField(item.id, { etapa: e.target.value })}
+                                  className={`px-2 py-1 text-[11px] font-bold rounded-lg border cursor-pointer focus:ring-1 focus:ring-indigo-500 shadow-2xs ${getEtapaBadgeClass(stage)}`}
+                                >
+                                  {ETAPAS_SEQUENTIAL.map(st => (
+                                    <option key={st.id} value={st.id} className="bg-white text-gray-800">
+                                      {st.icon} {st.fullLabel}
+                                    </option>
+                                  ))}
+                                </select>
 
-                                {/* Barra de avance de 4 pasos */}
-                                <div className="flex items-center gap-1 w-full max-w-[130px] pt-0.5" title={`Etapa actual: ${stage}`}>
-                                  {stages.map((st, idx) => {
+                                {/* Stepper 8 Pasos Mini */}
+                                <div className="flex items-center gap-0.5 w-full max-w-[140px] pt-0.5">
+                                  {ETAPAS_SEQUENTIAL.map((st, idx) => {
                                     const isCompleted = idx < stageIndex;
                                     const isCurrent = idx === stageIndex;
                                     return (
                                       <div 
                                         key={st.id} 
                                         className={`h-1.5 flex-1 rounded-full transition-all ${
-                                          isCurrent ? (isRechazado ? 'bg-red-500 ring-2 ring-red-200 animate-pulse' : 'bg-indigo-600 ring-2 ring-indigo-200 animate-pulse') :
+                                          isCurrent ? 'bg-indigo-600 ring-1 ring-indigo-300 animate-pulse' :
                                           isCompleted ? 'bg-emerald-500' : 'bg-gray-200'
                                         }`}
-                                        title={`Etapa: ${st.label}`}
+                                        title={`Etapa: ${st.fullLabel}`}
                                       />
                                     );
                                   })}
@@ -743,62 +853,89 @@ const GestionDemanda: React.FC = () => {
                           })()}
                         </td>
 
-                        {/* Área */}
-                        <td className="px-3 py-3 text-gray-700 font-medium">
-                          {item.area || 'General'}
+                        {/* 11. Fecha Comité */}
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <input
+                            type="date"
+                            value={item.fechaComite || ''}
+                            disabled={isUpdatingThis}
+                            onChange={(e) => handleQuickUpdateField(item.id, { fechaComite: e.target.value })}
+                            className="px-2 py-1 text-xs border border-purple-300 rounded-md focus:ring-1 focus:ring-purple-500 bg-white font-medium cursor-pointer"
+                          />
                         </td>
 
-                        {/* Planificación (Estimada / Real) */}
-                        <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
-                          <div><span className="text-gray-400">Est:</span> {item.planificacionEstimada || '-'}</div>
-                          <div><span className="text-gray-400">Real:</span> {item.planificacionReal || '-'}</div>
+                        {/* 12. PLANIF. (EST / REAL) - Formato exacto solicitado */}
+                        <td className="px-3 py-3 text-gray-600 whitespace-nowrap font-mono text-xs">
+                          <div><span className="text-gray-400 font-sans">Est:</span> {item.planificacionEstimada || '-'}</div>
+                          <div><span className="text-gray-400 font-sans">Real:</span> {item.planificacionReal || '-'}</div>
                         </td>
 
-                        {/* Entrega (Estimada / Real) */}
-                        <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
-                          <div><span className="text-gray-400">Est:</span> {item.fechaEstimadaEntrega || '-'}</div>
-                          <div><span className="text-gray-400">Real:</span> {item.fechaEntregaReal || '-'}</div>
+                        {/* 13. ENTREGA (EST / REAL) - Formato exacto solicitado */}
+                        <td className="px-3 py-3 text-gray-600 whitespace-nowrap font-mono text-xs">
+                          <div><span className="text-gray-400 font-sans">Est:</span> {item.fechaEstimadaEntrega || '-'}</div>
+                          <div><span className="text-gray-400 font-sans">Real:</span> {item.fechaEntregaReal || '-'}</div>
                         </td>
 
-                        {/* Variación Fecha Entrega */}
-                        <td className="px-3 py-3 text-center">
-                          <span className={`px-2.5 py-1 rounded-full text-[11px] ${variacion.colorClass}`}>
-                            {variacion.texto}
-                          </span>
+                        {/* 14. Tiempo Estimado Completo */}
+                        <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
+                          <input
+                            type="text"
+                            value={item.tiempoEstimadoCompleto || calculateTiempoEstimadoAuto(item)}
+                            placeholder="Ej: 15 días"
+                            disabled={isUpdatingThis}
+                            onChange={(e) => handleQuickUpdateField(item.id, { tiempoEstimadoCompleto: e.target.value })}
+                            className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-indigo-500 bg-white max-w-[130px]"
+                          />
                         </td>
 
-                        {/* Responsable TI */}
-                        <td className="px-3 py-3 text-gray-800 font-medium">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-5 h-5 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center text-[10px] font-bold">
-                              TI
-                            </span>
-                            <span>{item.responsableTI || 'No asignado'}</span>
-                          </div>
+                        {/* 15. Tiempo Estimado Ajuste */}
+                        <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
+                          <input
+                            type="text"
+                            value={item.tiempoEstimadoAjuste || ''}
+                            placeholder="Ej: +3 días"
+                            disabled={isUpdatingThis}
+                            onChange={(e) => handleQuickUpdateField(item.id, { tiempoEstimadoAjuste: e.target.value })}
+                            className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-indigo-500 bg-white max-w-[120px]"
+                          />
                         </td>
 
-                        {/* Solicitante */}
+                        {/* 16. Observación (Sin texto por defecto) */}
                         <td className="px-3 py-3 text-gray-700">
-                          {item.solicitante}
+                          {(() => {
+                            const obs = item.observaciones || '';
+                            const isAutoText = obs.includes('Actualizado desde Prospect') || 
+                                               obs.includes('Sincronizado') || 
+                                               obs.includes('Ficha creada') || 
+                                               obs.includes('Traspasado desde');
+                            const cleanObs = isAutoText ? '' : obs;
+                            return cleanObs ? (
+                              <span className="truncate max-w-[160px] block text-xs" title={cleanObs}>
+                                {cleanObs}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs font-normal">-</span>
+                            );
+                          })()}
                         </td>
 
-                        {/* Acciones */}
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end space-x-2">
+                        {/* 17. Acciones */}
+                        <td className="px-4 py-3 text-right whitespace-nowrap sticky right-0 bg-white shadow-xs">
+                          <div className="flex items-center justify-end space-x-1.5">
                             {isAprobado && (
                               <button
                                 onClick={() => handleConvertToFicha(item)}
-                                className="px-2.5 py-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1"
+                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold transition-all shadow-2xs flex items-center gap-1"
                                 title="Traspasar datos a Ficha de Proyecto"
                               >
-                                🚀 Pasar a Ficha
+                                🚀 Ficha
                               </button>
                             )}
 
                             <button
                               onClick={() => handleOpenEditModal(item)}
                               className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
-                              title="Editar Ficha Completa"
+                              title="Editar Requerimiento"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -826,18 +963,18 @@ const GestionDemanda: React.FC = () => {
         </div>
       </main>
 
-      {/* Modal Crear/Editar Demanda */}
+      {/* Modal Crear / Editar Requerimiento */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden border border-gray-100">
+          <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden border border-gray-100">
             {/* Header del Modal */}
             <div className="px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold">
-                  {editingItem ? 'Editar Ficha de Demanda' : 'Nueva Ficha de Demanda'}
+                  {editingItem ? 'Editar Requerimiento de Demanda' : 'Nuevo Requerimiento de Demanda'}
                 </h3>
                 <p className="text-xs text-indigo-100">
-                  {editingItem ? 'Actualiza los parámetros del requerimiento' : 'Ingresa los datos para recepcionar la demanda'}
+                  Formulario completo de recepción y seguimiento
                 </p>
               </div>
               <button
@@ -850,31 +987,77 @@ const GestionDemanda: React.FC = () => {
               </button>
             </div>
 
-            {/* Formulario */}
-            <form onSubmit={handleSubmitForm} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Formulario Modal */}
+            <form onSubmit={handleSubmitForm} className="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
-                {/* Proyecto */}
+                {/* Vincular Ficha Prospecto (Auto-completar Código y Proyecto) */}
+                {prospectos.length > 0 && (
+                  <div className="lg:col-span-3 bg-indigo-50/70 p-3 rounded-xl border border-indigo-100">
+                    <label className="block text-xs font-bold text-indigo-900 mb-1 flex items-center gap-1">
+                      <span>📋</span>
+                      <span>Seleccionar Ficha Prospecto (Sincroniza Código y Nombre de Proyecto)</span>
+                    </label>
+                    <select
+                      value={prospectos.find(p => p.codigo === formData.codigo)?.id || ''}
+                      onChange={(e) => {
+                        const selected = prospectos.find(p => p.id === e.target.value);
+                        if (selected) {
+                          setFormData(prev => ({
+                            ...prev,
+                            codigo: selected.codigo,
+                            proyecto: selected.nombreProyecto,
+                            solicitante: prev.solicitante || selected.cliente || ''
+                          }));
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 font-medium"
+                    >
+                      <option value="">- Seleccionar desde Fichas Prospecto -</option>
+                      {prospectos.map(p => (
+                        <option key={p.id} value={p.id}>
+                          [{p.codigo}] {p.nombreProyecto} {p.cliente ? `(${p.cliente})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* 1. Código (Igual al de Ficha Prospecto) */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Código Proyecto (Prospecto) <span className="text-indigo-600 font-bold">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.codigo || ''}
+                    onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                    placeholder="Ej: PR-2026-001"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* 2. Nombre del Proyecto */}
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Nombre del Proyecto / Requerimiento <span className="text-red-500">*</span>
+                    Nombre del Proyecto <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={formData.proyecto || ''}
                     onChange={(e) => setFormData({ ...formData, proyecto: e.target.value })}
-                    placeholder="Ej: PROY-005 Implementación Servidor Cloud"
+                    placeholder="Ej: Implementación Portal Clientes"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
 
-                {/* Tipo Proyecto */}
+                {/* Tipo de Proyecto */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Tipo de Proyecto</label>
                   <select
                     value={formData.tipoProyecto || 'Interno'}
-                    onChange={(e) => setFormData({ ...formData, tipoProyecto: e.target.value as TipoProyectoDemanda })}
+                    onChange={(e) => setFormData({ ...formData, tipoProyecto: e.target.value as any })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="Interno">Interno (Corporativo)</option>
@@ -882,80 +1065,122 @@ const GestionDemanda: React.FC = () => {
                   </select>
                 </div>
 
-                {/* Prioridad */}
+                {/* 3. Fecha Solicitud */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Prioridad</label>
-                  <select
-                    value={formData.prioridad || 'media'}
-                    onChange={(e) => setFormData({ ...formData, prioridad: e.target.value as PrioridadDemanda })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="alta">🔴 Alta</option>
-                    <option value="media">🟡 Media</option>
-                    <option value="baja">🔵 Baja</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Fecha Solicitud</label>
+                  <input
+                    type="date"
+                    value={formData.fechaSolicitud || ''}
+                    onChange={(e) => setFormData({ ...formData, fechaSolicitud: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                  />
                 </div>
 
-                {/* Estado */}
+                {/* 4. Área Solicitante */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Estado actual</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Área Solicitante</label>
                   <select
-                    value={formData.estado || 'solicitado'}
-                    onChange={(e) => setFormData({ ...formData, estado: e.target.value as EstadoDemanda })}
+                    value={formData.area || 'Comercial'}
+                    onChange={(e) => setFormData({ ...formData, area: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
                   >
-                    {ESTADOS_DEMANDA.map(est => (
-                      <option key={est} value={est}>{est.charAt(0).toUpperCase() + est.slice(1)}</option>
+                    {AREAS_SOLICITANTES.map(a => (
+                      <option key={a} value={a}>{a}</option>
                     ))}
                   </select>
                 </div>
 
-                {/* ✅ NUEVO: Seguidor Visual de Etapa del Proyecto / Trazabilidad ("Pedido viajando") */}
-                <ProjectLifecycleStepper
-                  currentStage={formData.etapa || 'Ficha'}
-                  onStageChange={(stage) => setFormData({ ...formData, etapa: stage })}
-                />
-
-                {/* Área */}
+                {/* 5. Responsable TI (Colaboradores Registrados) */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Área Solicitante</label>
-                  <input
-                    type="text"
-                    value={formData.area || ''}
-                    onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                    placeholder="Ej: Finanzas, Operaciones, Comercial"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-
-                {/* Solicitante */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Persona Solicitante <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.solicitante || ''}
-                    onChange={(e) => setFormData({ ...formData, solicitante: e.target.value })}
-                    placeholder="Nombre del solicitante"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-
-                {/* Responsable TI */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Responsable TI Asignado</label>
-                  <input
-                    type="text"
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Responsable TI (Colaboradores)</label>
+                  <select
                     value={formData.responsableTI || ''}
                     onChange={(e) => setFormData({ ...formData, responsableTI: e.target.value })}
-                    placeholder="Ej: Juan Pérez"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">- Seleccionar Colaborador -</option>
+                    {profesionales.map(p => (
+                      <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 6. Estado */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Estado</label>
+                  <select
+                    value={formData.estado || 'Solicitud'}
+                    onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {ESTADOS_DEMANDA.map(est => (
+                      <option key={est} value={est}>{est}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 7. Decisión del Comité */}
+                <div>
+                  <label className="block text-xs font-bold text-purple-700 mb-1">Decisión del Comité</label>
+                  <select
+                    value={formData.decisionComite || 'Pendiente'}
+                    onChange={(e) => setFormData({ ...formData, decisionComite: e.target.value })}
+                    className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500 font-medium"
+                  >
+                    {DECISIONES_COMITE.map(d => (
+                      <option key={d.id} value={d.id}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 8. Prioridad */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Prioridad</label>
+                  <select
+                    value={formData.prioridad || 'Media'}
+                    onChange={(e) => setFormData({ ...formData, prioridad: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {PRIORIDADES_DEMANDA.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 9. Semáforo */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Semáforo</label>
+                  <select
+                    value={formData.semaforo || 'Verde'}
+                    onChange={(e) => setFormData({ ...formData, semaforo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 font-bold"
+                  >
+                    {SEMAFOROS_DEMANDA.map(s => (
+                      <option key={s.id} value={s.id}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 11. Fecha Comité */}
+                <div>
+                  <label className="block text-xs font-bold text-purple-700 mb-1">Fecha Comité</label>
+                  <input
+                    type="date"
+                    value={formData.fechaComite || ''}
+                    onChange={(e) => setFormData({ ...formData, fechaComite: e.target.value })}
+                    className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500 font-medium"
                   />
                 </div>
 
-                {/* Planificación Estimada */}
+                {/* 10. Etapa Stepper */}
+                <div className="lg:col-span-3">
+                  <ProjectLifecycleStepper
+                    currentStage={formData.etapa || 'Ingreso'}
+                    onStageChange={(stage) => setFormData({ ...formData, etapa: stage })}
+                  />
+                </div>
+
+                {/* 12. Planificación (Estimada / Real) */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Planificación Estimada (Inicio)</label>
                   <input
@@ -966,7 +1191,6 @@ const GestionDemanda: React.FC = () => {
                   />
                 </div>
 
-                {/* Planificación Real */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Planificación Real (Inicio)</label>
                   <input
@@ -977,9 +1201,9 @@ const GestionDemanda: React.FC = () => {
                   />
                 </div>
 
-                {/* Fecha Estimada Entrega */}
+                {/* 13. Entrega (Estimada / Real) */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Fecha Estimada de Entrega</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Fecha Estimada Entrega</label>
                   <input
                     type="date"
                     value={formData.fechaEstimadaEntrega || ''}
@@ -988,9 +1212,8 @@ const GestionDemanda: React.FC = () => {
                   />
                 </div>
 
-                {/* Fecha Entrega Real */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Fecha Real de Entrega</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Fecha Real Entrega</label>
                   <input
                     type="date"
                     value={formData.fechaEntregaReal || ''}
@@ -999,14 +1222,50 @@ const GestionDemanda: React.FC = () => {
                   />
                 </div>
 
-                {/* Observaciones */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Observaciones o Descripción</label>
+                {/* 14. Tiempo Estimado Completo */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Tiempo Estimado Completo</label>
+                  <input
+                    type="text"
+                    value={formData.tiempoEstimadoCompleto || ''}
+                    onChange={(e) => setFormData({ ...formData, tiempoEstimadoCompleto: e.target.value })}
+                    placeholder="Ej: 15 días, 2 meses"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* 15. Tiempo Estimado Ajuste */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Tiempo Estimado Ajuste</label>
+                  <input
+                    type="text"
+                    value={formData.tiempoEstimadoAjuste || ''}
+                    onChange={(e) => setFormData({ ...formData, tiempoEstimadoAjuste: e.target.value })}
+                    placeholder="Ej: +3 días"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* Solicitante Persona */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Solicitante Persona</label>
+                  <input
+                    type="text"
+                    value={formData.solicitante || ''}
+                    onChange={(e) => setFormData({ ...formData, solicitante: e.target.value })}
+                    placeholder="Nombre del solicitante"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* 16. Observaciones (Totalmente en blanco por defecto) */}
+                <div className="lg:col-span-3">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Observaciones / Detalles</label>
                   <textarea
                     rows={3}
                     value={formData.observaciones || ''}
                     onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                    placeholder="Detalles adicionales del requerimiento..."
+                    placeholder="Escriba observaciones o detalles si lo requiere..."
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
