@@ -190,14 +190,13 @@ export const demandaService = {
                          ['OFIMUNDO', 'DREAMTEC', 'GLOBAL HORIZON', 'HIWAY'].includes((prospecto.cliente || '').trim().toUpperCase());
       const tipoProyecto: TipoProyectoDemanda = isInternal ? 'Interno' : 'Externo';
 
-      const is100Pct = !!(prospecto.estado && prospecto.estado.includes('100%'));
-
       const demandaData: Partial<DemandaItem> = {
         proyecto: prospecto.nombreProyecto,
         tipoProyecto: tipoProyecto,
         prioridad: 'alta',
-        estado: is100Pct ? 'ejecución aprobada' : (exists ? exists.estado : 'solicitado'),
-        etapa: (exists && exists.etapa && ['Prospecto', 'Ficha', 'Solicitud', 'Aprobado', 'Rechazado'].includes(exists.etapa)) ? exists.etapa : (is100Pct ? 'Ficha' : 'Prospecto'),
+        estado: exists ? exists.estado : 'Solicitud',
+        decisionComite: exists ? exists.decisionComite : 'Pendiente',
+        etapa: (exists && exists.etapa) ? exists.etapa : 'Ingreso',
         area: prospecto.lineaServicio || 'Comercial',
         planificacionEstimada: prospecto.fechaInicio || prospecto.fechaEstimadaAdjudicacion || new Date().toISOString().split('T')[0],
         fechaEstimadaEntrega: prospecto.fechaTermino || '',

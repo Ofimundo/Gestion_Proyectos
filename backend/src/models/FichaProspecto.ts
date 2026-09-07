@@ -189,7 +189,6 @@ export class FichaProspectoModel {
         
         const isInternalComp = ['OFIMUNDO', 'DREAMTEC', 'GLOBAL HORIZON', 'HIWAY'].includes((prospecto.cliente || '').trim().toUpperCase());
         const tipoProyecto: 'Interno' | 'Externo' = (prospecto.tipoCliente === 'Interno' || isInternalComp) ? 'Interno' : 'Externo';
-        const is100Pct = !!(prospecto.estado && prospecto.estado.includes('100%'));
 
         if (check.recordset.length === 0) {
             await GestionDemandaModel.create({
@@ -197,8 +196,9 @@ export class FichaProspectoModel {
                 proyecto: prospecto.nombreProyecto,
                 tipoProyecto: tipoProyecto,
                 prioridad: 'alta',
-                estado: is100Pct ? 'ejecución aprobada' : 'solicitado',
-                etapa: is100Pct ? 'Ficha' : 'Prospecto',
+                estado: 'Solicitud',
+                decisionComite: 'Pendiente',
+                etapa: 'Ingreso',
                 area: prospecto.lineaServicio || 'Comercial',
                 planificacionEstimada: prospecto.fechaInicio || prospecto.fechaEstimadaAdjudicacion || new Date().toISOString().split('T')[0],
                 fechaEstimadaEntrega: prospecto.fechaTermino || '',
@@ -206,10 +206,10 @@ export class FichaProspectoModel {
                 solicitante: prospecto.cliente || 'Prospecto comercial',
                 observaciones: ''
             });
-            console.log(`✅ Demanda creada automáticamente desde el Prospecto "${prospecto.nombreProyecto}" (${tipoProyecto})`);
+            console.log(`✅ Demanda creada desde el Prospecto "${prospecto.nombreProyecto}" en estado Solicitud (${tipoProyecto})`);
         } else {
             const demandaId = check.recordset[0].Id;
-            const updatePayload: any = {
+            await GestionDemandaModel.update(demandaId, {
                 codigo: prospecto.codigo || '',
                 tipoProyecto: tipoProyecto,
                 area: prospecto.lineaServicio || 'Comercial',
@@ -218,11 +218,7 @@ export class FichaProspectoModel {
                 responsableTI: prospecto.gestorComercial || 'Por asignar',
                 solicitante: prospecto.cliente || 'Prospecto comercial',
                 observaciones: ''
-            };
-            if (is100Pct) {
-                updatePayload.estado = 'ejecución aprobada';
-            }
-            await GestionDemandaModel.update(demandaId, updatePayload);
+            });
             console.log(`✅ Demanda id ${demandaId} actualizada desde Prospecto "${prospecto.nombreProyecto}"`);
         }
     }
@@ -233,7 +229,7 @@ export class FichaProspectoModel {
             // 1. Insert new prospectos to GestionDemanda
             await db.request().query(`
                 INSERT INTO GestionDemanda (
-                    Codigo, Proyecto, TipoProyecto, Prioridad, Estado, Etapa, Area,
+                    Codigo, Proyecto, TipoProyecto, Prioridad, Estado, DecisionComite, Etapa, Area,
                     PlanificacionEstimada, FechaEstimadaEntrega, ResponsableTI, Solicitante, Observaciones, FechaCreacion
                 )
                 SELECT 
@@ -244,14 +240,9 @@ export class FichaProspectoModel {
                         ELSE 'Externo'
                     END AS TipoProyecto,
                     'alta' AS Prioridad,
-                    CASE 
-                        WHEN fp.Estado LIKE '%100%%' THEN 'ejecución aprobada' 
-                        ELSE 'solicitado' 
-                    END AS Estado,
-                    CASE 
-                        WHEN fp.Estado LIKE '%100%%' THEN 'Ficha' 
-                        ELSE 'Prospecto' 
-                    END AS Etapa,
+                    'Solicitud' AS Estado,
+                    'Pendiente' AS DecisionComite,
+                    'Ingreso' AS Etapa,
                     COALESCE(NULLIF(fp.LineaServicio, ''), 'Comercial') AS Area,
                     COALESCE(
                         NULLIF(CONVERT(VARCHAR(10), fp.FechaInicio, 120), ''), 

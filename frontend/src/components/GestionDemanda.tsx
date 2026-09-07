@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { DemandaItem } from '../types/demanda';
 import demandaService from '../services/demandaService';
 import api from '../services/api';
+import { showSuccess, showError, showWarning } from './Toast';
 
 export const AREAS_SOLICITANTES = [
   'Admin & Fin',
@@ -134,6 +135,26 @@ const calculateTiempoEstimadoAuto = (item: Partial<DemandaItem>): string => {
     }
   }
   return '-';
+};
+
+const generateProjectCode = (nombre: string, existingItems: DemandaItem[], currentId?: string | null): string => {
+  if (!nombre || !nombre.trim()) return '';
+  const clean = nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '');
+  const prefix = clean.substring(0, 4);
+  if (!prefix) return '';
+
+  const matchingCodes = (existingItems || [])
+    .filter(item => item.id !== currentId && item.codigo && item.codigo.toLowerCase().startsWith(`${prefix}_`))
+    .map(item => {
+      const parts = (item.codigo || '').split('_');
+      return parts.length > 1 ? parseInt(parts[1], 10) : 0;
+    })
+    .filter(n => !isNaN(n));
+
+  const maxNum = matchingCodes.length > 0 ? Math.max(...matchingCodes) : 0;
+  const nextNum = maxNum + 1;
+  const numStr = nextNum.toString().padStart(2, '0');
+  return `${prefix}_${numStr}`;
 };
 
 // Componente Stepper de 8 Etapas ("Pedido viajando")
@@ -367,8 +388,14 @@ const GestionDemanda: React.FC = () => {
       setUpdatingId(id);
       const updated = await demandaService.update(id, fields);
       setDemandas(prev => prev.map(item => item.id === id ? updated : item));
+
+      const isNowAprobado = fields.estado === 'Aprobado' || fields.decisionComite === 'Aprobado';
+      if (isNowAprobado) {
+        showSuccess(`✅ Demanda "${updated.proyecto}" aprobada. Ficha de Proyecto creada automáticamente.`);
+      }
     } catch (err) {
       console.error('Error en actualización rápida:', err);
+      showError('Error al actualizar el registro de demanda');
     } finally {
       setUpdatingId(null);
     }
@@ -380,10 +407,9 @@ const GestionDemanda: React.FC = () => {
 
   const handleOpenCreateModal = () => {
     setEditingItem(null);
-    const firstProspecto = prospectos[0];
     setFormData({
-      codigo: firstProspecto ? firstProspecto.codigo : '',
-      proyecto: firstProspecto ? firstProspecto.nombreProyecto : '',
+      codigo: '',
+      proyecto: '',
       tipoProyecto: 'Interno',
       fechaSolicitud: new Date().toISOString().split('T')[0],
       area: 'Comercial',
@@ -400,7 +426,7 @@ const GestionDemanda: React.FC = () => {
       fechaEntregaReal: '',
       tiempoEstimadoCompleto: '',
       tiempoEstimadoAjuste: '',
-      solicitante: firstProspecto ? (firstProspecto.cliente || '') : '',
+      solicitante: '',
       observaciones: ''
     });
     setIsModalOpen(true);
@@ -417,8 +443,10 @@ const GestionDemanda: React.FC = () => {
       try {
         await demandaService.delete(id);
         setDemandas(prev => prev.filter(item => item.id !== id));
+        showSuccess('Registro de demanda eliminado');
       } catch (err) {
         console.error('Error al eliminar demanda:', err);
+        showError('Error al eliminar el registro de demanda');
       }
     }
   };
@@ -426,24 +454,28 @@ const GestionDemanda: React.FC = () => {
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.proyecto) {
-      alert('Por favor ingrese el Nombre del Proyecto.');
+      showWarning('Por favor ingrese el Nombre del Proyecto.');
       return;
     }
 
     try {
       setIsSaving(true);
       let itemSaved: DemandaItem;
+      const isApproved = formData.estado === 'Aprobado' || formData.decisionComite === 'Aprobado';
+
       if (editingItem) {
         itemSaved = await demandaService.update(editingItem.id, formData);
         setDemandas(prev => prev.map(item => item.id === editingItem.id ? itemSaved : item));
+        showSuccess(isApproved ? `✅ Demanda actualizada y aprobada. Ficha de Proyecto creada automáticamente.` : 'Demanda actualizada correctamente.');
       } else {
         itemSaved = await demandaService.create(formData);
         setDemandas(prev => [itemSaved, ...prev]);
+        showSuccess(isApproved ? `✅ Demanda "${itemSaved.proyecto}" registrada y aprobada. Ficha de Proyecto creada automáticamente.` : 'Demanda registrada correctamente.');
       }
       setIsModalOpen(false);
     } catch (err) {
       console.error('Error al guardar demanda:', err);
-      alert('Ocurrió un error al guardar los datos');
+      showError('Ocurrió un error al guardar los datos');
     } finally {
       setIsSaving(false);
     }
@@ -991,53 +1023,34 @@ const GestionDemanda: React.FC = () => {
             <form onSubmit={handleSubmitForm} className="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
-                {/* Vincular Ficha Prospecto (Auto-completar Código y Proyecto) */}
-                {prospectos.length > 0 && (
-                  <div className="lg:col-span-3 bg-indigo-50/70 p-3 rounded-xl border border-indigo-100">
-                    <label className="block text-xs font-bold text-indigo-900 mb-1 flex items-center gap-1">
-                      <span>📋</span>
-                      <span>Seleccionar Ficha Prospecto (Sincroniza Código y Nombre de Proyecto)</span>
-                    </label>
-                    <select
-                      value={prospectos.find(p => p.codigo === formData.codigo)?.id || ''}
-                      onChange={(e) => {
-                        const selected = prospectos.find(p => p.id === e.target.value);
-                        if (selected) {
-                          setFormData(prev => ({
-                            ...prev,
-                            codigo: selected.codigo,
-                            proyecto: selected.nombreProyecto,
-                            solicitante: prev.solicitante || selected.cliente || ''
-                          }));
-                        }
-                      }}
-                      className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 font-medium"
-                    >
-                      <option value="">- Seleccionar desde Fichas Prospecto -</option>
-                      {prospectos.map(p => (
-                        <option key={p.id} value={p.id}>
-                          [{p.codigo}] {p.nombreProyecto} {p.cliente ? `(${p.cliente})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* 1. Código (Igual al de Ficha Prospecto) */}
+                {/* Tipo de Proyecto */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Código Proyecto (Prospecto) <span className="text-indigo-600 font-bold">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.codigo || ''}
-                    onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
-                    placeholder="Ej: PR-2026-001"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-indigo-500"
-                  />
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Tipo de Proyecto</label>
+                  {!editingItem ? (
+                    <div>
+                      <input
+                        type="text"
+                        readOnly
+                        value="Interno (Corporativo)"
+                        className="w-full px-3 py-2 border border-indigo-200 bg-indigo-50/70 rounded-lg text-sm font-bold text-indigo-900 cursor-not-allowed"
+                      />
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        * Nuevos requerimientos en este módulo son únicamente Internos.
+                      </p>
+                    </div>
+                  ) : (
+                    <select
+                      value={formData.tipoProyecto || 'Interno'}
+                      onChange={(e) => setFormData({ ...formData, tipoProyecto: e.target.value as any })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 font-semibold"
+                    >
+                      <option value="Interno">Interno (Corporativo)</option>
+                      <option value="Externo">Externo (Cliente / Terceros)</option>
+                    </select>
+                  )}
                 </div>
 
-                {/* 2. Nombre del Proyecto */}
+                {/* Nombre del Proyecto */}
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
                     Nombre del Proyecto <span className="text-red-500">*</span>
@@ -1046,23 +1059,35 @@ const GestionDemanda: React.FC = () => {
                     type="text"
                     required
                     value={formData.proyecto || ''}
-                    onChange={(e) => setFormData({ ...formData, proyecto: e.target.value })}
+                    onChange={(e) => {
+                      const newProj = e.target.value;
+                      const autoCode = generateProjectCode(newProj, demandas, editingItem?.id);
+                      setFormData(prev => ({
+                        ...prev,
+                        proyecto: newProj,
+                        codigo: autoCode || prev.codigo
+                      }));
+                    }}
                     placeholder="Ej: Implementación Portal Clientes"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 font-medium"
                   />
                 </div>
 
-                {/* Tipo de Proyecto */}
+                {/* Código del Proyecto */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Tipo de Proyecto</label>
-                  <select
-                    value={formData.tipoProyecto || 'Interno'}
-                    onChange={(e) => setFormData({ ...formData, tipoProyecto: e.target.value as any })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="Interno">Interno (Corporativo)</option>
-                    <option value="Externo">Externo (Cliente / Terceros)</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Código del Proyecto <span className="text-indigo-600 font-bold">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.codigo || ''}
+                    onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                    placeholder="Ej: impl_01"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-700 bg-gray-50/50"
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    * Autogenerado (4 letras del nombre + 2 números, ej: impl_01)
+                  </p>
                 </div>
 
                 {/* 3. Fecha Solicitud */}

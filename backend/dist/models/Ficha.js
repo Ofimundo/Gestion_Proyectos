@@ -9,8 +9,25 @@ const mssql_1 = __importDefault(require("mssql"));
 class FichaModel {
     static async create(data) {
         const db = await (0, database_1.getDatabase)();
+        const etapaVal = data.etapaLifecycle || data.etapa || 'Ingreso';
         // 1. Obtener o crear un Proyecto asociado en la tabla Proyectos si no existe
         let proyectoId;
+        // Buscar si ya existe una FichaProyecto para este NombreProyecto o Codigo
+        const existingFichaCheck = await db.request()
+            .input('NombreProyecto', mssql_1.default.NVarChar, data.nombreProyecto || '')
+            .input('Codigo', mssql_1.default.NVarChar, data.codigo || '')
+            .query(`
+                SELECT f.Id 
+                FROM FichasProyecto f
+                INNER JOIN Proyectos p ON f.ProyectoId = p.Id
+                WHERE (f.NombreProyecto IS NOT NULL AND LOWER(LTRIM(RTRIM(f.NombreProyecto))) = LOWER(LTRIM(RTRIM(@NombreProyecto))))
+                   OR (p.Codigo IS NOT NULL AND p.Codigo <> '' AND p.Codigo = @Codigo)
+            `);
+        if (existingFichaCheck.recordset.length > 0) {
+            const existingId = existingFichaCheck.recordset[0].Id;
+            console.log(`⚠️ Ficha existente encontrada (Id: ${existingId}). Actualizando en lugar de crear duplicado.`);
+            return this.update(existingId, data);
+        }
         // Buscar por nombre de proyecto
         const existingProj = await db.request()
             .input('NombreProyecto', mssql_1.default.NVarChar, data.nombreProyecto)
@@ -21,7 +38,8 @@ class FichaModel {
             await db.request()
                 .input('Id', mssql_1.default.Int, proyectoId)
                 .input('Estado', mssql_1.default.NVarChar, data.estado || 'No Iniciada')
-                .query('UPDATE Proyectos SET Estado = @Estado, FechaActualizacion = GETDATE() WHERE Id = @Id');
+                .input('EtapaLifecycle', mssql_1.default.NVarChar, etapaVal)
+                .query('UPDATE Proyectos SET Estado = @Estado, EtapaLifecycle = @EtapaLifecycle, FechaActualizacion = GETDATE() WHERE Id = @Id');
         }
         else {
             // Crear Proyecto
@@ -32,6 +50,7 @@ class FichaModel {
                 .input('Cliente', mssql_1.default.NVarChar, data.cliente || '')
                 .input('Lider', mssql_1.default.NVarChar, data.lider || '')
                 .input('Estado', mssql_1.default.NVarChar, data.estado || 'No Iniciada')
+                .input('EtapaLifecycle', mssql_1.default.NVarChar, etapaVal)
                 .input('Venta', mssql_1.default.Decimal(18, 2), data.venta || 0)
                 .input('HHPlanificadas', mssql_1.default.Decimal(10, 2), data.hhPlanificadas || 0)
                 .input('HHReal', mssql_1.default.Decimal(10, 2), data.hhReal || 0)
@@ -39,8 +58,8 @@ class FichaModel {
                 .input('FechaFin', mssql_1.default.Date, data.fechaTermino ? new Date(data.fechaTermino) : null)
                 .input('Descripcion', mssql_1.default.NVarChar, data.descripcion || '')
                 .query(`
-                    INSERT INTO Proyectos (Codigo, NombreProyecto, Cliente, Lider, Estado, Avance, Venta, HHPlanificadas, HHReal, FechaInicio, FechaFin, Descripcion, FechaCreacion)
-                    VALUES (@Codigo, @NombreProyecto, @Cliente, @Lider, @Estado, @HHPlanificadas, @Venta, @HHPlanificadas, @HHReal, @FechaInicio, @FechaFin, @Descripcion, GETDATE());
+                    INSERT INTO Proyectos (Codigo, NombreProyecto, Cliente, Lider, Estado, EtapaLifecycle, Avance, Venta, HHPlanificadas, HHReal, FechaInicio, FechaFin, Descripcion, FechaCreacion)
+                    VALUES (@Codigo, @NombreProyecto, @Cliente, @Lider, @Estado, @EtapaLifecycle, @HHPlanificadas, @Venta, @HHPlanificadas, @HHReal, @FechaInicio, @FechaFin, @Descripcion, GETDATE());
                     SELECT SCOPE_IDENTITY() AS Id;
                 `);
             proyectoId = createProj.recordset[0].Id;
@@ -54,15 +73,32 @@ class FichaModel {
             .input('HHPlanificadas', mssql_1.default.Decimal(10, 2), data.hhPlanificadas || 0)
             .input('HHReal', mssql_1.default.Decimal(10, 2), data.hhReal || 0)
             .input('Estado', mssql_1.default.NVarChar, data.estado || 'Activa')
+            .input('EtapaLifecycle', mssql_1.default.NVarChar, etapaVal)
             .input('FechaInicio', mssql_1.default.Date, data.fechaInicio ? new Date(data.fechaInicio) : null)
             .input('FechaFin', mssql_1.default.Date, data.fechaTermino ? new Date(data.fechaTermino) : null)
             .input('Descripcion', mssql_1.default.NVarChar, data.descripcion || '')
             .query(`
-                INSERT INTO FichasProyecto (ProyectoId, NombreProyecto, HHImplementacion, HHPeriodo, HHPlanificadas, HHReal, Estado, FechaInicio, FechaFin, Descripcion, FechaCreacion)
-                VALUES (@ProyectoId, @NombreProyecto, @HHImplementacion, @HHPeriodo, @HHPlanificadas, @HHReal, @Estado, @FechaInicio, @FechaFin, @Descripcion, GETDATE());
+                INSERT INTO FichasProyecto (ProyectoId, NombreProyecto, HHImplementacion, HHPeriodo, HHPlanificadas, HHReal, Estado, EtapaLifecycle, FechaInicio, FechaFin, Descripcion, FechaCreacion)
+                VALUES (@ProyectoId, @NombreProyecto, @HHImplementacion, @HHPeriodo, @HHPlanificadas, @HHReal, @Estado, @EtapaLifecycle, @FechaInicio, @FechaFin, @Descripcion, GETDATE());
                 SELECT SCOPE_IDENTITY() AS Id;
             `);
         const newFichaId = result.recordset[0].Id;
+        // Sync with GestionDemanda.Etapa
+        try {
+            await db.request()
+                .input('Etapa', mssql_1.default.NVarChar, etapaVal)
+                .input('Codigo', mssql_1.default.NVarChar, data.codigo || '')
+                .input('NombreProyecto', mssql_1.default.NVarChar, data.nombreProyecto || '')
+                .query(`
+                    UPDATE GestionDemanda
+                    SET Etapa = @Etapa, FechaActualizacion = GETDATE()
+                    WHERE (Codigo = @Codigo AND @Codigo <> '')
+                       OR LOWER(LTRIM(RTRIM(Proyecto))) = LOWER(LTRIM(RTRIM(@NombreProyecto)));
+                `);
+        }
+        catch (err) {
+            console.error('Error al sincronizar Etapa con GestionDemanda al crear Ficha:', err);
+        }
         // 3. Guardar recursos asignados
         if (data.recursosIds && data.horasPorRecurso) {
             for (const rId of data.recursosIds) {
@@ -130,10 +166,13 @@ class FichaModel {
             .input('Id', mssql_1.default.Int, Number(id))
             .query(`
                 SELECT f.*, p.Codigo, p.Cliente, p.Lider, p.Venta, p.Avance, p.Estado AS EstadoProyecto,
-                       s.NombreResponsableProyecto
+                       s.NombreResponsableProyecto,
+                       COALESCE(NULLIF(gd.Etapa, ''), NULLIF(f.EtapaLifecycle, ''), NULLIF(p.EtapaLifecycle, ''), 'Ingreso') AS EtapaLifecycle
                 FROM FichasProyecto f
                 INNER JOIN Proyectos p ON f.ProyectoId = p.Id
                 LEFT JOIN SolicitudesProyecto s ON f.NombreProyecto = s.NombreProyecto
+                LEFT JOIN GestionDemanda gd ON (p.Codigo IS NOT NULL AND p.Codigo <> '' AND p.Codigo = gd.Codigo) 
+                                             OR LOWER(LTRIM(RTRIM(f.NombreProyecto))) = LOWER(LTRIM(RTRIM(gd.Proyecto)))
                 WHERE f.Id = @Id
             `);
         const ficha = result.recordset[0];
@@ -145,10 +184,13 @@ class FichaModel {
         const db = await (0, database_1.getDatabase)();
         const result = await db.request().query(`
             SELECT f.*, p.Codigo, p.Cliente, p.Lider, p.Venta, p.Avance, p.Estado AS EstadoProyecto,
-                   s.NombreResponsableProyecto
+                   s.NombreResponsableProyecto,
+                   COALESCE(NULLIF(gd.Etapa, ''), NULLIF(f.EtapaLifecycle, ''), NULLIF(p.EtapaLifecycle, ''), 'Ingreso') AS EtapaLifecycle
             FROM FichasProyecto f
             INNER JOIN Proyectos p ON f.ProyectoId = p.Id
             LEFT JOIN SolicitudesProyecto s ON f.NombreProyecto = s.NombreProyecto
+            LEFT JOIN GestionDemanda gd ON (p.Codigo IS NOT NULL AND p.Codigo <> '' AND p.Codigo = gd.Codigo) 
+                                         OR LOWER(LTRIM(RTRIM(f.NombreProyecto))) = LOWER(LTRIM(RTRIM(gd.Proyecto)))
             ORDER BY f.FechaCreacion DESC
         `);
         const list = [];
@@ -166,6 +208,11 @@ class FichaModel {
         }
         const fields = [];
         const request = db.request();
+        const newEtapa = data.etapaLifecycle || data.etapa;
+        if (newEtapa) {
+            fields.push('EtapaLifecycle = @EtapaLifecycle');
+            request.input('EtapaLifecycle', mssql_1.default.NVarChar, newEtapa);
+        }
         if (data.nombreProyecto) {
             fields.push('NombreProyecto = @NombreProyecto');
             request.input('NombreProyecto', mssql_1.default.NVarChar, data.nombreProyecto);
@@ -209,6 +256,31 @@ class FichaModel {
                 SET ${fields.join(', ')}, FechaActualizacion = GETDATE() 
                 WHERE Id = @Id
             `);
+        }
+        // Sincronizar Etapa con GestionDemanda y Proyectos
+        if (newEtapa) {
+            try {
+                const code = data.codigo || (fichaActual && fichaActual.codigo);
+                const projName = data.nombreProyecto || (fichaActual && fichaActual.nombreProyecto);
+                await db.request()
+                    .input('Etapa', mssql_1.default.NVarChar, newEtapa)
+                    .input('Codigo', mssql_1.default.NVarChar, code || '')
+                    .input('NombreProyecto', mssql_1.default.NVarChar, projName || '')
+                    .query(`
+                        UPDATE GestionDemanda
+                        SET Etapa = @Etapa, FechaActualizacion = GETDATE()
+                        WHERE (Codigo = @Codigo AND @Codigo <> '')
+                           OR LOWER(LTRIM(RTRIM(Proyecto))) = LOWER(LTRIM(RTRIM(@NombreProyecto)));
+
+                        UPDATE Proyectos
+                        SET EtapaLifecycle = @Etapa, FechaActualizacion = GETDATE()
+                        WHERE (Codigo = @Codigo AND @Codigo <> '')
+                           OR LOWER(LTRIM(RTRIM(NombreProyecto))) = LOWER(LTRIM(RTRIM(@NombreProyecto)));
+                    `);
+            }
+            catch (syncErr) {
+                console.error('Error al sincronizar Etapa desde FichaModel.update:', syncErr);
+            }
         }
         // Si se actualizan recursos asignados
         if (data.recursosIds && data.horasPorRecurso) {
@@ -387,6 +459,7 @@ class FichaModel {
             liderId: undefined,
             descripcion: f.Descripcion || '',
             tecnologias: '',
+            etapaLifecycle: f.EtapaLifecycle || 'Ingreso',
             venta: Number(f.Venta || 0),
             hhImplementacion: Number(f.HHImplementacion || 0),
             hhPeriodo: Number(f.HHPeriodo || 0),

@@ -7,6 +7,7 @@ export interface Ficha {
     liderId?: string;
     descripcion: string;
     tecnologias: string;
+    etapaLifecycle?: string;
     venta: number;
     hhImplementacion: number;
     hhPeriodo: number;

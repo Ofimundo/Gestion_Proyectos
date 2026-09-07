@@ -6,10 +6,6 @@ import ofilabIcon from '../assets/ofilab-icon.png';
 const FichasProspectoPage: React.FC = () => {
   const navigate = useNavigate();
 
-  const handleConvertToProject = (prospecto: any) => {
-    navigate('/fichas-proyecto', { state: { convertFromProspecto: prospecto } });
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       {/* Navbar */}
@@ -43,7 +39,7 @@ const FichasProspectoPage: React.FC = () => {
 
       {/* Contenido Principal */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <FichasProspecto onConvertToProject={handleConvertToProject} />
+        <FichasProspecto />
       </main>
     </div>
   );

@@ -71,6 +71,15 @@ export class GestionDemandaModel {
         const created = await this.findById(newId);
         if (!created) throw new Error('Error al crear el registro de demanda');
 
+        // Si la demanda se crea ya aprobada, generar la Ficha de Proyecto
+        if (this.isDemandaAprobada(created)) {
+            try {
+                await this.createFichaProyectoFromDemanda(created);
+            } catch (fichaErr) {
+                console.error('Error al crear Ficha de Proyecto en creación de Demanda:', fichaErr);
+            }
+        }
+
         return created;
     }
 
@@ -172,6 +181,15 @@ export class GestionDemandaModel {
         const updated = await this.findById(id);
         if (!updated) throw new Error('Registro de demanda no encontrado');
 
+        // Si la demanda pasa a estar Aprobada, crear la Ficha de Proyecto automáticamente
+        if (this.isDemandaAprobada(updated)) {
+            try {
+                await this.createFichaProyectoFromDemanda(updated);
+            } catch (fichaErr) {
+                console.error('Error al crear Ficha de Proyecto tras aprobar Demanda:', fichaErr);
+            }
+        }
+
         return updated;
     }
 
@@ -190,14 +208,28 @@ export class GestionDemandaModel {
             .query('DELETE FROM GestionDemanda WHERE Id = @Id');
     }
 
+    private static isDemandaAprobada(demanda: DemandaData): boolean {
+        const est = (demanda.estado || '').trim().toLowerCase();
+        const dec = (demanda.decisionComite || '').trim().toLowerCase();
+        return est === 'aprobado' || est === 'ejecución aprobada' || est === 'aprobada' || dec === 'aprobado' || dec === 'aprobada';
+    }
+
     public static async createFichaProyectoFromDemanda(demanda: DemandaData): Promise<void> {
         const db = await getDatabase();
         const check = await db.request()
-            .input('NombreProyecto', sql.NVarChar, demanda.proyecto)
-            .query('SELECT Id FROM FichasProyecto WHERE NombreProyecto = @NombreProyecto');
+            .input('NombreProyecto', sql.NVarChar, demanda.proyecto || '')
+            .input('Codigo', sql.NVarChar, demanda.codigo || '')
+            .query(`
+                SELECT f.Id 
+                FROM FichasProyecto f
+                INNER JOIN Proyectos p ON f.ProyectoId = p.Id
+                WHERE (f.NombreProyecto IS NOT NULL AND LOWER(LTRIM(RTRIM(f.NombreProyecto))) = LOWER(LTRIM(RTRIM(@NombreProyecto))))
+                   OR (p.Codigo IS NOT NULL AND p.Codigo <> '' AND p.Codigo = @Codigo)
+            `);
         
         if (check.recordset.length === 0) {
             await FichaModel.create({
+                codigo: (demanda.codigo && !demanda.codigo.startsWith('DEM-')) ? demanda.codigo : undefined,
                 nombreProyecto: demanda.proyecto,
                 cliente: demanda.solicitante || demanda.area || 'No especificado',
                 lider: demanda.responsableTI || 'No asignado',
@@ -206,6 +238,7 @@ export class GestionDemandaModel {
                 fechaInicio: demanda.planificacionReal || demanda.planificacionEstimada || new Date().toISOString().split('T')[0],
                 fechaTermino: demanda.fechaEstimadaEntrega || '',
                 estado: 'No Iniciada',
+                etapaLifecycle: demanda.etapa || 'Ingreso',
                 avance: 0,
                 venta: 0,
                 hhPlanificadas: 0,

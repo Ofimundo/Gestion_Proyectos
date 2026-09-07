@@ -132,10 +132,10 @@ const generateVigenteCode = (nombre: string, existingProspectos: FichaProspecto[
 };
 
 interface FichasProspectoProps {
-  onConvertToProject?: (p: FichaProspecto) => void;
+  // onConvertToProject ya no aplica en este módulo
 }
 
-const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject }) => {
+const FichasProspecto: React.FC<FichasProspectoProps> = () => {
   const [prospectos, setProspectos] = useState<FichaProspecto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -823,15 +823,6 @@ const FichasProspecto: React.FC<FichasProspectoProps> = ({ onConvertToProject })
                             >
                               Eliminar
                             </button>
-                            {onConvertToProject && (
-                              <button 
-                                onClick={() => onConvertToProject(p)}
-                                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1"
-                                title="Traspasar información con el mismo código directamente a Ficha de Proyecto"
-                              >
-                                🚀 Pasar a Ficha Proyecto
-                              </button>
-                            )}
                           </div>
                         </td>
                       </tr>
