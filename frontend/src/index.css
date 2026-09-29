@@ -84,3 +84,35 @@
 .animate-slide-out {
   animation: slideOut 0.3s ease-in forwards;
 }
+
+/* Custom Scrollbars para máxima visibilidad */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 12px;
+  height: 14px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #4f46e5;
+  border-radius: 8px;
+  border: 2px solid #e2e8f0;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3730a3;
+}
+
+.custom-scrollbar {
+  scrollbar-width: auto;
+  scrollbar-color: #4f46e5 #e2e8f0;
+}
+
+/* Ocultar scrollbar horizontal nativo para evitar duplicación cuando hay un scrollbar sticky flotante */
+.no-horizontal-scrollbar::-webkit-scrollbar:horizontal {
+  display: none !important;
+  height: 0px !important;
+}

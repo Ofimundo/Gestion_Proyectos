@@ -83,6 +83,20 @@ export const demandaService = {
     return newItem;
   },
 
+  // Crear múltiples demandas (Importación desde Excel)
+  bulkCreate: async (items: Partial<DemandaItem>[]): Promise<DemandaItem[]> => {
+    const createdItems: DemandaItem[] = [];
+    for (const item of items) {
+      try {
+        const created = await demandaService.create(item);
+        createdItems.push(created);
+      } catch (err) {
+        console.error('Error al crear elemento importado:', item, err);
+      }
+    }
+    return createdItems;
+  },
+
   // Actualizar demanda completa
   update: async (id: string, data: Partial<DemandaItem>): Promise<DemandaItem> => {
     try {

@@ -1364,9 +1364,9 @@ const Fichas: React.FC = () => {
             </div>
 
             <div className="bg-white rounded-lg border border-gray-200 shadow-xl overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[calc(100vh-230px)] relative shadow-inner custom-scrollbar">
                 <table className="min-w-full divide-y divide-gray-200 text-xs sm:text-sm">
-                  <thead className="bg-gradient-to-r from-purple-600 to-pink-600">
+                  <thead className="bg-gradient-to-r from-purple-600 to-pink-600 sticky top-0 z-20 shadow-xs">
                     <tr>
                       <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider">Código</th>
                       <th className="px-2 sm:px-3 py-2 text-left font-semibold text-white uppercase tracking-wider hidden xs:table-cell">Proyecto</th>

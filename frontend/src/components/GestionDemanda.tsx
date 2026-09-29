@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DemandaItem } from '../types/demanda';
+import * as XLSX from 'xlsx';
+import { DemandaItem, TipoProyectoDemanda } from '../types/demanda';
 import demandaService from '../services/demandaService';
 import api from '../services/api';
 import { showSuccess, showError, showWarning } from './Toast';
@@ -276,6 +277,66 @@ const ProjectLifecycleStepper: React.FC<{
   );
 };
 
+// Helper de formateo de fecha Excel
+const formatExcelDate = (val: any): string => {
+  if (!val) return '';
+  if (typeof val === 'number') {
+    const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+    return !isNaN(date.getTime()) ? date.toISOString().split('T')[0] : '';
+  }
+  const str = String(val).trim();
+  if (str.match(/^\d{4}-\d{2}-\d{2}$/)) return str;
+  const parts = str.split(/[\/\-]/);
+  if (parts.length === 3) {
+    if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+    if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+  }
+  return str;
+};
+
+// Normalizar fila de Excel a objeto DemandaItem
+const normalizeRowToDemanda = (row: Record<string, any>): Partial<DemandaItem> | null => {
+  const getVal = (...keys: string[]) => {
+    for (const key of keys) {
+      const foundKey = Object.keys(row).find(k => k.trim().toLowerCase() === key.toLowerCase());
+      if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null) {
+        return String(row[foundKey]).trim();
+      }
+    }
+    return '';
+  };
+
+  const proyecto = getVal('PROYECTO', 'Nombre Proyecto', 'Proyecto', 'Nombre del Proyecto', 'Nombre', 'Project');
+  if (!proyecto) return null; // Omitir filas sin nombre de proyecto
+
+  const codigo = getVal('ID', 'Código', 'Codigo', 'Code');
+  const tipoProyectoRaw = getVal('TIPO PROYECTO', 'Tipo Proyecto', 'Tipo', 'Tipo de Proyecto');
+  const tipoProyecto: TipoProyectoDemanda = (tipoProyectoRaw.toLowerCase() === 'externo') ? 'Externo' : 'Interno';
+
+  return {
+    codigo: codigo || '',
+    proyecto: proyecto,
+    tipoProyecto: tipoProyecto,
+    fechaSolicitud: formatExcelDate(getVal('FECHA SOLICITUD', 'Fecha Solicitud', 'Fecha', 'Solicitud')) || new Date().toISOString().split('T')[0],
+    area: getVal('AREA SOLICITANTE', 'Área Solicitante', 'Área', 'Area', 'Area Solicitante') || 'Comercial',
+    responsableTI: getVal('RESPONSABLE TI', 'Responsable TI', 'Responsable', 'TI') || '',
+    estado: getVal('ESTADO', 'Estado') || 'Solicitud',
+    decisionComite: getVal('DECISIÓN COMITÉ', 'Decisión Comité', 'Decision Comite', 'Comité', 'Comite') || 'Pendiente',
+    prioridad: getVal('PRIORIDAD', 'Prioridad') || 'Media',
+    semaforo: getVal('SEMAFORO', 'Semáforo', 'Semaforo') || 'Verde',
+    etapa: getVal('ETAPA', 'Etapa') || 'Ingreso',
+    fechaComite: formatExcelDate(getVal('FECHA COMITÉ', 'Fecha Comité', 'Fecha Comite')),
+    planificacionEstimada: formatExcelDate(getVal('FECHA DE INICIO', 'Planificación Estimada', 'Planificacion Estimada', 'Inicio Estimado')) || new Date().toISOString().split('T')[0],
+    planificacionReal: formatExcelDate(getVal('Planificación Real', 'Planificacion Real', 'Inicio Real')),
+    fechaEstimadaEntrega: formatExcelDate(getVal('FECHA FIN ESTIMADA', 'Fecha Estimada Entrega', 'Entrega Estimada')),
+    fechaEntregaReal: formatExcelDate(getVal('Fecha Real Entrega', 'Fecha Entrega Real', 'Entrega Real')),
+    tiempoEstimadoCompleto: getVal('TIEMPO ESTIMADO COMPLETO', 'Tiempo Estimado Completo', 'Tiempo Estimado'),
+    tiempoEstimadoAjuste: getVal('TIEMPO ESTIMADO AJUSTES', 'TIEMPO ESTIMADO AJUSTE', 'Tiempo Estimado Ajuste', 'Ajuste'),
+    solicitante: getVal('Solicitante', 'Solicitante Persona'),
+    observaciones: getVal('OBSERVACION', 'OBSERVACIONES', 'Observaciones', 'Observación', 'Observacion', 'Detalles')
+  };
+};
+
 const GestionDemanda: React.FC = () => {
   const navigate = useNavigate();
   const [demandas, setDemandas] = useState<DemandaItem[]>([]);
@@ -292,11 +353,125 @@ const GestionDemanda: React.FC = () => {
   const [filterDecisionComite, setFilterDecisionComite] = useState<string>('todos');
   const [filterPrioridad, setFilterPrioridad] = useState<string>('todas');
 
+  // Paginación
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(10);
+
+  // Reset a página 1 al cambiar cualquier filtro
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterTipo, filterArea, filterEstado, filterDecisionComite, filterPrioridad]);
+
   // Modales
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<DemandaItem | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Modal e Importación Excel
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+  const [importedPreviewItems, setImportedPreviewItems] = useState<Partial<DemandaItem>[]>([]);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDownloadTemplate = () => {
+    const templateData = [
+      {
+        'ID': 'impl_01',
+        'PROYECTO': 'Sistema de Automatización de Reportes',
+        'AREA SOLICITANTE': 'Operaciones',
+        'RESPONSABLE TI': 'Juan Pérez',
+        'ESTADO': 'Solicitud',
+        'DECISIÓN COMITÉ': 'Pendiente',
+        'PRIORIDAD': 'Alta',
+        'SEMAFORO': 'Verde',
+        'ETAPA': 'Ingreso',
+        'FECHA SOLICITUD': new Date().toISOString().split('T')[0],
+        'FECHA COMITÉ': '',
+        'FECHA DE INICIO': new Date().toISOString().split('T')[0],
+        'FECHA FIN ESTIMADA': '',
+        'TIEMPO ESTIMADO COMPLETO': '20 días',
+        'TIEMPO ESTIMADO AJUSTES': '',
+        'OBSERVACION': 'Requerimiento prioritario'
+      },
+      {
+        'ID': 'portal_02',
+        'PROYECTO': 'Portal de Atenciones Internas',
+        'AREA SOLICITANTE': 'Experiencia Colaboradores',
+        'RESPONSABLE TI': 'María López',
+        'ESTADO': 'Evaluación',
+        'DECISIÓN COMITÉ': 'Pendiente',
+        'PRIORIDAD': 'Media',
+        'SEMAFORO': 'Verde',
+        'ETAPA': 'Evaluación',
+        'FECHA SOLICITUD': new Date().toISOString().split('T')[0],
+        'FECHA COMITÉ': '',
+        'FECHA DE INICIO': new Date().toISOString().split('T')[0],
+        'FECHA FIN ESTIMADA': '',
+        'TIEMPO ESTIMADO COMPLETO': '1 mes',
+        'TIEMPO ESTIMADO AJUSTES': '',
+        'OBSERVACION': 'Optimización de procesos'
+      }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'PlantillaDemanda');
+    XLSX.writeFile(wb, 'Plantilla_Gestion_Demanda.xlsx');
+    showSuccess('Plantilla de Excel descargada');
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' });
+
+        const parsedItems = rawData.map(normalizeRowToDemanda).filter((item): item is Partial<DemandaItem> => item !== null);
+
+        if (parsedItems.length === 0) {
+          showWarning('No se encontraron proyectos válidos en el archivo Excel.');
+          return;
+        }
+
+        setImportedPreviewItems(parsedItems);
+        setIsImportModalOpen(true);
+      } catch (err) {
+        console.error('Error al procesar archivo Excel:', err);
+        showError('No se pudo leer el archivo Excel. Verifique el formato.');
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleConfirmImport = async () => {
+    if (importedPreviewItems.length === 0) return;
+    try {
+      setIsImporting(true);
+      await demandaService.bulkCreate(importedPreviewItems);
+      showSuccess(`✅ ${importedPreviewItems.length} requerimientos importados exitosamente.`);
+      setIsImportModalOpen(false);
+      setImportedPreviewItems([]);
+      await loadData();
+    } catch (err) {
+      console.error('Error al importar requerimientos:', err);
+      showError('Ocurrió un error durante la importación masiva');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // Ref de la Tabla Principal
+  const bottomScrollRef = useRef<HTMLDivElement>(null);
 
   // Form State (observaciones totalmente vacío por defecto sin texto automático)
   const [formData, setFormData] = useState<Partial<DemandaItem>>({
@@ -501,6 +676,17 @@ const GestionDemanda: React.FC = () => {
     });
   }, [demandas, searchQuery, filterTipo, filterArea, filterEstado, filterDecisionComite, filterPrioridad]);
 
+  const totalPages = useMemo(() => {
+    if (itemsPerPage === -1) return 1;
+    return Math.ceil(filteredDemandas.length / itemsPerPage);
+  }, [filteredDemandas.length, itemsPerPage]);
+
+  const paginatedDemandas = useMemo(() => {
+    if (itemsPerPage === -1) return filteredDemandas;
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredDemandas.slice(start, start + itemsPerPage);
+  }, [filteredDemandas, currentPage, itemsPerPage]);
+
   const stats = useMemo(() => {
     const total = demandas.length;
     const internos = demandas.filter(d => d.tipoProyecto === 'Interno').length;
@@ -513,10 +699,10 @@ const GestionDemanda: React.FC = () => {
   }, [demandas]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
       {/* Header Bar */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
-        <div className="max-w-[98%] mx-auto px-4 py-4">
+      <header className="bg-white border-b border-gray-200 flex-shrink-0 z-20 shadow-sm">
+        <div className="max-w-[98%] mx-auto px-4 py-3">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="flex items-center space-x-3">
               <button
@@ -538,7 +724,7 @@ const GestionDemanda: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center space-x-3 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
               <button
                 onClick={loadData}
                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
@@ -550,10 +736,32 @@ const GestionDemanda: React.FC = () => {
               </button>
 
               <button
-                onClick={handleOpenCreateModal}
-                className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 text-white font-medium text-sm rounded-lg hover:bg-indigo-700 shadow-sm transition-all gap-2"
+                onClick={handleDownloadTemplate}
+                className="inline-flex items-center justify-center px-3 py-2 bg-white text-emerald-700 border border-emerald-300 font-medium text-xs rounded-lg hover:bg-emerald-50 transition-all gap-1.5 shadow-2xs cursor-pointer"
+                title="Descargar plantilla de Excel de la demanda"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span>📥 Plantilla Excel</span>
+              </button>
+
+              <label className="inline-flex items-center justify-center px-3.5 py-2 bg-emerald-600 text-white font-medium text-xs rounded-lg hover:bg-emerald-700 shadow-2xs transition-all gap-1.5 cursor-pointer">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                <span>Importar Excel</span>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".xlsx, .xls, .csv"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+              </label>
+
+              <button
+                onClick={handleOpenCreateModal}
+                className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 text-white font-medium text-xs rounded-lg hover:bg-indigo-700 shadow-2xs transition-all gap-1.5 cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
                 <span>Nuevo Requerimiento</span>
@@ -564,48 +772,48 @@ const GestionDemanda: React.FC = () => {
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-[98%] mx-auto px-4 py-6">
+      <main className="flex-1 flex flex-col min-h-0 max-w-[98%] mx-auto px-4 py-3 w-full space-y-3 overflow-hidden">
 
         {/* Tarjetas de Métricas */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 flex-shrink-0">
+          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-3">
             <p className="text-xs font-medium text-gray-500">Total Solicitudes</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
+            <p className="text-xl font-bold text-gray-900 mt-0.5">{stats.total}</p>
           </div>
-          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
+          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-3">
             <p className="text-xs font-medium text-gray-500">Internos</p>
-            <p className="text-2xl font-bold text-indigo-600 mt-1">{stats.internos}</p>
+            <p className="text-xl font-bold text-indigo-600 mt-0.5">{stats.internos}</p>
           </div>
-          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
+          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-3">
             <p className="text-xs font-medium text-gray-500">Externos</p>
-            <p className="text-2xl font-bold text-purple-600 mt-1">{stats.externos}</p>
+            <p className="text-xl font-bold text-purple-600 mt-0.5">{stats.externos}</p>
           </div>
-          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
+          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-3">
             <p className="text-xs font-medium text-gray-500">Alta Prioridad</p>
-            <p className="text-2xl font-bold text-red-600 mt-1">{stats.altaPrioridad}</p>
+            <p className="text-xl font-bold text-red-600 mt-0.5">{stats.altaPrioridad}</p>
           </div>
-          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
+          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-3">
             <p className="text-xs font-medium text-gray-500">En Ejecución</p>
-            <p className="text-2xl font-bold text-blue-600 mt-1">{stats.enProceso}</p>
+            <p className="text-xl font-bold text-blue-600 mt-0.5">{stats.enProceso}</p>
           </div>
-          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4">
+          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-3">
             <p className="text-xs font-medium text-gray-500">Completados</p>
-            <p className="text-2xl font-bold text-green-600 mt-1">{stats.completados}</p>
+            <p className="text-xl font-bold text-green-600 mt-0.5">{stats.completados}</p>
           </div>
         </div>
 
         {/* Toolbar de Búsqueda y Filtros */}
-        <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4 mb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-3 flex-shrink-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2.5">
             <div className="relative lg:col-span-2">
               <input
                 type="text"
                 placeholder="Buscar por código, proyecto, área, TI..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-9 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
               />
-              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-gray-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
@@ -614,7 +822,7 @@ const GestionDemanda: React.FC = () => {
               <select
                 value={filterTipo}
                 onChange={(e) => setFilterTipo(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="todos">Tipo: Todos</option>
                 <option value="Interno">Interno</option>
@@ -626,7 +834,7 @@ const GestionDemanda: React.FC = () => {
               <select
                 value={filterArea}
                 onChange={(e) => setFilterArea(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="todas">Área: Todas</option>
                 {AREAS_SOLICITANTES.map(a => (
@@ -639,7 +847,7 @@ const GestionDemanda: React.FC = () => {
               <select
                 value={filterEstado}
                 onChange={(e) => setFilterEstado(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="todos">Estado: Todos</option>
                 {ESTADOS_DEMANDA.map(est => (
@@ -652,7 +860,7 @@ const GestionDemanda: React.FC = () => {
               <select
                 value={filterDecisionComite}
                 onChange={(e) => setFilterDecisionComite(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500"
+                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-purple-500"
               >
                 <option value="todos">Decisión Comité: Todas</option>
                 {DECISIONES_COMITE.map(d => (
@@ -665,7 +873,7 @@ const GestionDemanda: React.FC = () => {
               <select
                 value={filterPrioridad}
                 onChange={(e) => setFilterPrioridad(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="todas">Prioridad: Todas</option>
                 {PRIORIDADES_DEMANDA.map(p => (
@@ -676,324 +884,419 @@ const GestionDemanda: React.FC = () => {
           </div>
         </div>
 
-        {/* Tabla Principal de Gestión de la Demanda (Orden Exacto Solicitado) */}
-        <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
+        {/* Tabla Principal de Gestión de la Demanda */}
+        <div className="bg-white rounded-xl shadow-xs border border-gray-200 flex-1 flex flex-col min-h-0 overflow-hidden">
           {loading ? (
-            <div className="p-12 text-center">
+            <div className="p-12 text-center my-auto">
               <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
               <p className="text-gray-500 text-sm">Cargando gestión de demandas...</p>
             </div>
           ) : error ? (
-            <div className="p-8 text-center bg-red-50 text-red-600">
+            <div className="p-8 text-center bg-red-50 text-red-600 my-auto">
               <p>{error}</p>
               <button onClick={loadData} className="mt-2 text-xs font-semibold underline">Reintentar</button>
             </div>
           ) : filteredDemandas.length === 0 ? (
-            <div className="p-12 text-center">
+            <div className="p-12 text-center my-auto">
               <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400">
                 📋
               </div>
               <p className="text-gray-700 font-medium">No se encontraron registros de demanda</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <div 
+                ref={bottomScrollRef}
+                className="flex-1 overflow-auto min-h-0 relative shadow-inner custom-scrollbar"
+              >
               <table className="min-w-full divide-y divide-gray-200 text-left text-xs">
-                <thead className="bg-slate-100 text-gray-700 font-semibold uppercase tracking-wider">
-                  <tr>
-                    <th className="px-3 py-3 min-w-[100px]">Código</th>
-                    <th className="px-4 py-3 min-w-[200px]">Nombre Proyecto</th>
-                    <th className="px-3 py-3 min-w-[130px]">Fecha Solicitud</th>
-                    <th className="px-3 py-3 min-w-[160px]">Área Solicitante</th>
-                    <th className="px-3 py-3 min-w-[170px]">Responsable TI</th>
-                    <th className="px-3 py-3 min-w-[150px]">Estado</th>
-                    <th className="px-3 py-3 min-w-[140px] text-purple-700 font-bold">Decisión Comité</th>
-                    <th className="px-3 py-3 min-w-[110px]">Prioridad</th>
-                    <th className="px-3 py-3 min-w-[110px]">Semáforo</th>
-                    <th className="px-3 py-3 min-w-[170px]">Etapa</th>
-                    <th className="px-3 py-3 min-w-[130px] text-purple-700 font-bold">Fecha Comité</th>
-                    <th className="px-3 py-3 min-w-[140px]">PLANIF. (EST / REAL)</th>
-                    <th className="px-3 py-3 min-w-[140px]">ENTREGA (EST / REAL)</th>
-                    <th className="px-3 py-3 min-w-[150px]">Tiempo Est. Completo</th>
-                    <th className="px-3 py-3 min-w-[140px]">Tiempo Est. Ajuste</th>
-                    <th className="px-3 py-3 min-w-[160px]">Observación</th>
-                    <th className="px-4 py-3 text-right sticky right-0 bg-slate-100 shadow-xs">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
-                  {filteredDemandas.map((item) => {
-                    const isUpdatingThis = updatingId === item.id;
-                    const isAprobado = item.estado === 'Aprobado';
+              <thead className="bg-slate-100 text-gray-700 font-semibold uppercase tracking-wider sticky top-0 z-20 shadow-sm border-b border-gray-200">
+                <tr>
+                  <th className="px-3 py-1.5 min-w-[100px]">ID</th>
+                  <th className="px-4 py-1.5 min-w-[200px]">PROYECTO</th>
+                  <th className="px-3 py-1.5 min-w-[160px]">AREA SOLICITANTE</th>
+                  <th className="px-3 py-1.5 min-w-[170px]">RESPONSABLE TI</th>
+                  <th className="px-3 py-1.5 min-w-[150px]">ESTADO</th>
+                  <th className="px-3 py-1.5 min-w-[140px] text-purple-700 font-bold">DECISIÓN COMITÉ</th>
+                  <th className="px-3 py-1.5 min-w-[110px]">PRIORIDAD</th>
+                  <th className="px-3 py-1.5 min-w-[110px]">SEMAFORO</th>
+                  <th className="px-3 py-1.5 min-w-[170px]">ETAPA</th>
+                  <th className="px-3 py-1.5 min-w-[130px]">FECHA SOLICITUD</th>
+                  <th className="px-3 py-1.5 min-w-[130px] text-purple-700 font-bold">FECHA COMITÉ</th>
+                  <th className="px-3 py-1.5 min-w-[140px]">FECHA DE INICIO</th>
+                  <th className="px-3 py-1.5 min-w-[140px]">FECHA FIN ESTIMADA</th>
+                  <th className="px-3 py-1.5 min-w-[150px]">TIEMPO ESTIMADO COMPLETO</th>
+                  <th className="px-3 py-1.5 min-w-[140px]">TIEMPO ESTIMADO AJUSTES</th>
+                  <th className="px-3 py-1.5 min-w-[160px]">OBSERVACION</th>
+                  <th className="px-4 py-1.5 text-right sticky right-0 top-0 z-30 bg-slate-100 shadow-xs">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white">
+                {paginatedDemandas.map((item) => {
+                  const isUpdatingThis = updatingId === item.id;
+                  const isAprobado = item.estado === 'Aprobado';
 
-                    return (
-                      <tr key={item.id} className={`transition-colors ${isAprobado ? 'bg-emerald-50/70 hover:bg-emerald-100/70' : 'hover:bg-slate-50/80'}`}>
-                        
-                        {/* 1. Código (Código oficial de Prospecto) */}
-                        <td className="px-3 py-3 font-mono font-bold text-indigo-700 whitespace-nowrap">
-                          {item.codigo && !item.codigo.startsWith('DEM-') 
-                            ? item.codigo 
-                            : (prospectos.find(p => p.nombreProyecto.trim().toLowerCase() === (item.proyecto || '').trim().toLowerCase())?.codigo || item.codigo || '-')}
-                        </td>
+                  return (
+                    <tr key={item.id} className={`transition-colors ${isAprobado ? 'bg-emerald-50/70 hover:bg-emerald-100/70' : 'hover:bg-slate-50/80'}`}>
+                      
+                      {/* 1. Código (Código oficial de Prospecto) */}
+                      <td className="px-3 py-1 font-mono font-bold text-indigo-700 whitespace-nowrap">
+                        {item.codigo && !item.codigo.startsWith('DEM-') 
+                          ? item.codigo 
+                          : (prospectos.find(p => p.nombreProyecto.trim().toLowerCase() === (item.proyecto || '').trim().toLowerCase())?.codigo || item.codigo || '-')}
+                      </td>
 
-                        {/* 2. Nombre Proyecto */}
-                        <td className="px-4 py-3 font-medium text-gray-900">
-                          <div className="font-semibold text-sm text-gray-900 leading-snug">
-                            {item.proyecto}
-                          </div>
-                          <span className={`inline-block px-1.5 py-0.5 mt-1 rounded text-[10px] font-semibold uppercase ${
-                            item.tipoProyecto === 'Interno' ? 'bg-indigo-100 text-indigo-800' : 'bg-purple-100 text-purple-800'
-                          }`}>
-                            {item.tipoProyecto || 'Interno'}
-                          </span>
-                        </td>
+                      {/* 2. PROYECTO */}
+                      <td className="px-4 py-1 font-medium text-gray-900">
+                        <div className="font-semibold text-xs text-gray-900 leading-tight">
+                          {item.proyecto}
+                        </div>
+                        <span className={`inline-block px-1.5 py-0 mt-0.5 rounded text-[9px] font-semibold uppercase ${
+                          item.tipoProyecto === 'Interno' ? 'bg-indigo-100 text-indigo-800' : 'bg-purple-100 text-purple-800'
+                        }`}>
+                          {item.tipoProyecto || 'Interno'}
+                        </span>
+                      </td>
 
-                        {/* 3. Fecha Solicitud */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <input
-                            type="date"
-                            value={item.fechaSolicitud || ''}
-                            disabled={isUpdatingThis}
-                            onChange={(e) => handleQuickUpdateField(item.id, { fechaSolicitud: e.target.value })}
-                            className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-indigo-500 bg-white cursor-pointer"
-                          />
-                        </td>
+                      {/* 3. AREA SOLICITANTE */}
+                      <td className="px-3 py-1 whitespace-nowrap">
+                        <select
+                          value={item.area || 'Comercial'}
+                          disabled={isUpdatingThis}
+                          onChange={(e) => handleQuickUpdateField(item.id, { area: e.target.value })}
+                          className="px-1.5 py-0.5 text-xs font-medium rounded-lg border border-gray-300 focus:ring-1 focus:ring-indigo-500 bg-white cursor-pointer max-w-[150px] truncate"
+                        >
+                          {AREAS_SOLICITANTES.map(a => (
+                            <option key={a} value={a}>{a}</option>
+                          ))}
+                        </select>
+                      </td>
 
-                        {/* 4. Área Solicitante */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <select
-                            value={item.area || 'Comercial'}
-                            disabled={isUpdatingThis}
-                            onChange={(e) => handleQuickUpdateField(item.id, { area: e.target.value })}
-                            className="px-2 py-1 text-xs font-medium rounded-lg border border-gray-300 focus:ring-1 focus:ring-indigo-500 bg-white cursor-pointer max-w-[150px] truncate"
-                          >
-                            {AREAS_SOLICITANTES.map(a => (
-                              <option key={a} value={a}>{a}</option>
-                            ))}
-                          </select>
-                        </td>
+                      {/* 4. RESPONSABLE TI (Colaboradores Registrados) */}
+                      <td className="px-3 py-1 whitespace-nowrap">
+                        <select
+                          value={item.responsableTI || ''}
+                          disabled={isUpdatingThis}
+                          onChange={(e) => handleQuickUpdateField(item.id, { responsableTI: e.target.value })}
+                          className="px-1.5 py-0.5 text-xs font-semibold text-gray-800 rounded-lg border border-indigo-200 focus:ring-1 focus:ring-indigo-500 bg-indigo-50/50 cursor-pointer max-w-[160px] truncate"
+                        >
+                          <option value="">- No asignado -</option>
+                          {profesionales.map(p => (
+                            <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                          ))}
+                        </select>
+                      </td>
 
-                        {/* 5. Responsable TI (Colaboradores Registrados) */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <select
-                            value={item.responsableTI || ''}
-                            disabled={isUpdatingThis}
-                            onChange={(e) => handleQuickUpdateField(item.id, { responsableTI: e.target.value })}
-                            className="px-2 py-1 text-xs font-semibold text-gray-800 rounded-lg border border-indigo-200 focus:ring-1 focus:ring-indigo-500 bg-indigo-50/50 cursor-pointer max-w-[160px] truncate"
-                          >
-                            <option value="">- No asignado -</option>
-                            {profesionales.map(p => (
-                              <option key={p.id} value={p.nombre}>{p.nombre}</option>
-                            ))}
-                          </select>
-                        </td>
+                      {/* 5. ESTADO */}
+                      <td className="px-3 py-1 whitespace-nowrap">
+                        <select
+                          value={item.estado || 'Solicitud'}
+                          disabled={isUpdatingThis}
+                          onChange={(e) => handleQuickUpdateField(item.id, { estado: e.target.value })}
+                          className={`px-2 py-0.5 text-xs rounded-lg border focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs ${getEstadoBadgeClass(item.estado)}`}
+                        >
+                          {ESTADOS_DEMANDA.map(est => (
+                            <option key={est} value={est} className="bg-white text-gray-800">{est}</option>
+                          ))}
+                        </select>
+                      </td>
 
-                        {/* 6. Estado */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <select
-                            value={item.estado || 'Solicitud'}
-                            disabled={isUpdatingThis}
-                            onChange={(e) => handleQuickUpdateField(item.id, { estado: e.target.value })}
-                            className={`px-2.5 py-1 text-xs rounded-lg border focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs ${getEstadoBadgeClass(item.estado)}`}
-                          >
-                            {ESTADOS_DEMANDA.map(est => (
-                              <option key={est} value={est} className="bg-white text-gray-800">{est}</option>
-                            ))}
-                          </select>
-                        </td>
+                      {/* 6. DECISIÓN COMITÉ */}
+                      <td className="px-3 py-1 whitespace-nowrap">
+                        <select
+                          value={item.decisionComite || 'Pendiente'}
+                          disabled={isUpdatingThis}
+                          onChange={(e) => handleQuickUpdateField(item.id, { decisionComite: e.target.value })}
+                          className={`px-2 py-0.5 text-xs font-semibold rounded-lg border focus:ring-2 focus:ring-purple-500 cursor-pointer shadow-2xs ${getDecisionComiteBadgeClass(item.decisionComite)}`}
+                        >
+                          {DECISIONES_COMITE.map(d => (
+                            <option key={d.id} value={d.id} className="bg-white text-gray-800">{d.label}</option>
+                          ))}
+                        </select>
+                      </td>
 
-                        {/* 7. Decisión del Comité */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <select
-                            value={item.decisionComite || 'Pendiente'}
-                            disabled={isUpdatingThis}
-                            onChange={(e) => handleQuickUpdateField(item.id, { decisionComite: e.target.value })}
-                            className={`px-2.5 py-1 text-xs font-semibold rounded-lg border focus:ring-2 focus:ring-purple-500 cursor-pointer shadow-2xs ${getDecisionComiteBadgeClass(item.decisionComite)}`}
-                          >
-                            {DECISIONES_COMITE.map(d => (
-                              <option key={d.id} value={d.id} className="bg-white text-gray-800">{d.label}</option>
-                            ))}
-                          </select>
-                        </td>
+                      {/* 7. PRIORIDAD */}
+                      <td className="px-3 py-1 whitespace-nowrap">
+                        <select
+                          value={item.prioridad || 'Media'}
+                          disabled={isUpdatingThis}
+                          onChange={(e) => handleQuickUpdateField(item.id, { prioridad: e.target.value })}
+                          className={`px-1.5 py-0.5 text-xs font-semibold rounded-lg border focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs ${getPrioridadBadgeClass(item.prioridad)}`}
+                        >
+                          {PRIORIDADES_DEMANDA.map(p => (
+                            <option key={p} value={p} className="bg-white text-gray-800">{p}</option>
+                          ))}
+                        </select>
+                      </td>
 
-                        {/* 8. Prioridad */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <select
-                            value={item.prioridad || 'Media'}
-                            disabled={isUpdatingThis}
-                            onChange={(e) => handleQuickUpdateField(item.id, { prioridad: e.target.value })}
-                            className={`px-2 py-1 text-xs font-semibold rounded-lg border focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs ${getPrioridadBadgeClass(item.prioridad)}`}
-                          >
-                            {PRIORIDADES_DEMANDA.map(p => (
-                              <option key={p} value={p} className="bg-white text-gray-800">{p}</option>
-                            ))}
-                          </select>
-                        </td>
+                      {/* 8. SEMAFORO */}
+                      <td className="px-3 py-1 whitespace-nowrap">
+                        <select
+                          value={item.semaforo || 'Verde'}
+                          disabled={isUpdatingThis}
+                          onChange={(e) => handleQuickUpdateField(item.id, { semaforo: e.target.value })}
+                          className={`px-1.5 py-0.5 text-xs font-bold rounded-lg border focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs ${getSemaforoBadgeClass(item.semaforo)}`}
+                        >
+                          {SEMAFOROS_DEMANDA.map(s => (
+                            <option key={s.id} value={s.id} className="bg-white text-gray-800">{s.label}</option>
+                          ))}
+                        </select>
+                      </td>
 
-                        {/* 9. Semáforo */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <select
-                            value={item.semaforo || 'Verde'}
-                            disabled={isUpdatingThis}
-                            onChange={(e) => handleQuickUpdateField(item.id, { semaforo: e.target.value })}
-                            className={`px-2 py-1 text-xs font-bold rounded-lg border focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs ${getSemaforoBadgeClass(item.semaforo)}`}
-                          >
-                            {SEMAFOROS_DEMANDA.map(s => (
-                              <option key={s.id} value={s.id} className="bg-white text-gray-800">{s.label}</option>
-                            ))}
-                          </select>
-                        </td>
+                      {/* 9. ETAPA */}
+                      <td className="px-3 py-1 text-gray-700 min-w-[170px]">
+                        {(() => {
+                          const stage = getStageFromItem(item);
+                          const stageIndex = ETAPAS_SEQUENTIAL.findIndex(s => s.id === stage);
 
-                        {/* 10. Etapa */}
-                        <td className="px-3 py-3 text-gray-700 min-w-[170px]">
-                          {(() => {
-                            const stage = getStageFromItem(item);
-                            const stageIndex = ETAPAS_SEQUENTIAL.findIndex(s => s.id === stage);
-
-                            return (
-                              <div className="space-y-1">
-                                <select
-                                  value={stage}
-                                  disabled={isUpdatingThis}
-                                  onChange={(e) => handleQuickUpdateField(item.id, { etapa: e.target.value })}
-                                  className={`px-2 py-1 text-[11px] font-bold rounded-lg border cursor-pointer focus:ring-1 focus:ring-indigo-500 shadow-2xs ${getEtapaBadgeClass(stage)}`}
-                                >
-                                  {ETAPAS_SEQUENTIAL.map(st => (
-                                    <option key={st.id} value={st.id} className="bg-white text-gray-800">
-                                      {st.icon} {st.fullLabel}
-                                    </option>
-                                  ))}
-                                </select>
-
-                                {/* Stepper 8 Pasos Mini */}
-                                <div className="flex items-center gap-0.5 w-full max-w-[140px] pt-0.5">
-                                  {ETAPAS_SEQUENTIAL.map((st, idx) => {
-                                    const isCompleted = idx < stageIndex;
-                                    const isCurrent = idx === stageIndex;
-                                    return (
-                                      <div 
-                                        key={st.id} 
-                                        className={`h-1.5 flex-1 rounded-full transition-all ${
-                                          isCurrent ? 'bg-indigo-600 ring-1 ring-indigo-300 animate-pulse' :
-                                          isCompleted ? 'bg-emerald-500' : 'bg-gray-200'
-                                        }`}
-                                        title={`Etapa: ${st.fullLabel}`}
-                                      />
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </td>
-
-                        {/* 11. Fecha Comité */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <input
-                            type="date"
-                            value={item.fechaComite || ''}
-                            disabled={isUpdatingThis}
-                            onChange={(e) => handleQuickUpdateField(item.id, { fechaComite: e.target.value })}
-                            className="px-2 py-1 text-xs border border-purple-300 rounded-md focus:ring-1 focus:ring-purple-500 bg-white font-medium cursor-pointer"
-                          />
-                        </td>
-
-                        {/* 12. PLANIF. (EST / REAL) - Formato exacto solicitado */}
-                        <td className="px-3 py-3 text-gray-600 whitespace-nowrap font-mono text-xs">
-                          <div><span className="text-gray-400 font-sans">Est:</span> {item.planificacionEstimada || '-'}</div>
-                          <div><span className="text-gray-400 font-sans">Real:</span> {item.planificacionReal || '-'}</div>
-                        </td>
-
-                        {/* 13. ENTREGA (EST / REAL) - Formato exacto solicitado */}
-                        <td className="px-3 py-3 text-gray-600 whitespace-nowrap font-mono text-xs">
-                          <div><span className="text-gray-400 font-sans">Est:</span> {item.fechaEstimadaEntrega || '-'}</div>
-                          <div><span className="text-gray-400 font-sans">Real:</span> {item.fechaEntregaReal || '-'}</div>
-                        </td>
-
-                        {/* 14. Tiempo Estimado Completo */}
-                        <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
-                          <input
-                            type="text"
-                            value={item.tiempoEstimadoCompleto || calculateTiempoEstimadoAuto(item)}
-                            placeholder="Ej: 15 días"
-                            disabled={isUpdatingThis}
-                            onChange={(e) => handleQuickUpdateField(item.id, { tiempoEstimadoCompleto: e.target.value })}
-                            className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-indigo-500 bg-white max-w-[130px]"
-                          />
-                        </td>
-
-                        {/* 15. Tiempo Estimado Ajuste */}
-                        <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
-                          <input
-                            type="text"
-                            value={item.tiempoEstimadoAjuste || ''}
-                            placeholder="Ej: +3 días"
-                            disabled={isUpdatingThis}
-                            onChange={(e) => handleQuickUpdateField(item.id, { tiempoEstimadoAjuste: e.target.value })}
-                            className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-indigo-500 bg-white max-w-[120px]"
-                          />
-                        </td>
-
-                        {/* 16. Observación (Sin texto por defecto) */}
-                        <td className="px-3 py-3 text-gray-700">
-                          {(() => {
-                            const obs = item.observaciones || '';
-                            const isAutoText = obs.includes('Actualizado desde Prospect') || 
-                                               obs.includes('Sincronizado') || 
-                                               obs.includes('Ficha creada') || 
-                                               obs.includes('Traspasado desde');
-                            const cleanObs = isAutoText ? '' : obs;
-                            return cleanObs ? (
-                              <span className="truncate max-w-[160px] block text-xs" title={cleanObs}>
-                                {cleanObs}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 text-xs font-normal">-</span>
-                            );
-                          })()}
-                        </td>
-
-                        {/* 17. Acciones */}
-                        <td className="px-4 py-3 text-right whitespace-nowrap sticky right-0 bg-white shadow-xs">
-                          <div className="flex items-center justify-end space-x-1.5">
-                            {isAprobado && (
-                              <button
-                                onClick={() => handleConvertToFicha(item)}
-                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold transition-all shadow-2xs flex items-center gap-1"
-                                title="Traspasar datos a Ficha de Proyecto"
+                          return (
+                            <div className="space-y-0.5">
+                              <select
+                                value={stage}
+                                disabled={isUpdatingThis}
+                                onChange={(e) => handleQuickUpdateField(item.id, { etapa: e.target.value })}
+                                className={`px-1.5 py-0.5 text-[11px] font-bold rounded-lg border cursor-pointer focus:ring-1 focus:ring-indigo-500 shadow-2xs ${getEtapaBadgeClass(stage)}`}
                               >
-                                🚀 Ficha
-                              </button>
-                            )}
+                                {ETAPAS_SEQUENTIAL.map(st => (
+                                  <option key={st.id} value={st.id} className="bg-white text-gray-800">
+                                    {st.icon} {st.fullLabel}
+                                  </option>
+                                ))}
+                              </select>
 
-                            <button
-                              onClick={() => handleOpenEditModal(item)}
-                              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
-                              title="Editar Requerimiento"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
+                              {/* Stepper 8 Pasos Mini */}
+                              <div className="flex items-center gap-0.5 w-full max-w-[140px] pt-0">
+                                {ETAPAS_SEQUENTIAL.map((st, idx) => {
+                                  const isCompleted = idx < stageIndex;
+                                  const isCurrent = idx === stageIndex;
+                                  return (
+                                    <div 
+                                      key={st.id} 
+                                      className={`h-1 flex-1 rounded-full transition-all ${
+                                        isCurrent ? 'bg-indigo-600 ring-1 ring-indigo-300 animate-pulse' :
+                                        isCompleted ? 'bg-emerald-500' : 'bg-gray-200'
+                                      }`}
+                                      title={`Etapa: ${st.fullLabel}`}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </td>
 
+                      {/* 10. FECHA SOLICITUD */}
+                      <td className="px-3 py-1 whitespace-nowrap">
+                        <input
+                          type="date"
+                          value={item.fechaSolicitud || ''}
+                          disabled={isUpdatingThis}
+                          onChange={(e) => handleQuickUpdateField(item.id, { fechaSolicitud: e.target.value })}
+                          className="px-1.5 py-0.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-indigo-500 bg-white cursor-pointer"
+                        />
+                      </td>
+
+                      {/* 11. FECHA COMITÉ */}
+                      <td className="px-3 py-1 whitespace-nowrap">
+                        <input
+                          type="date"
+                          value={item.fechaComite || ''}
+                          disabled={isUpdatingThis}
+                          onChange={(e) => handleQuickUpdateField(item.id, { fechaComite: e.target.value })}
+                          className="px-1.5 py-0.5 text-xs border border-purple-300 rounded-md focus:ring-1 focus:ring-purple-500 bg-white font-medium cursor-pointer"
+                        />
+                      </td>
+
+                      {/* 12. PLANIF. (EST / REAL) - Formato exacto solicitado */}
+                      <td className="px-3 py-1 text-gray-600 whitespace-nowrap font-mono text-[11px] leading-tight">
+                        <div><span className="text-gray-400 font-sans">Est:</span> {item.planificacionEstimada || '-'}</div>
+                        <div><span className="text-gray-400 font-sans">Real:</span> {item.planificacionReal || '-'}</div>
+                      </td>
+
+                      {/* 13. ENTREGA (EST / REAL) - Formato exacto solicitado */}
+                      <td className="px-3 py-1 text-gray-600 whitespace-nowrap font-mono text-[11px] leading-tight">
+                        <div><span className="text-gray-400 font-sans">Est:</span> {item.fechaEstimadaEntrega || '-'}</div>
+                        <div><span className="text-gray-400 font-sans">Real:</span> {item.fechaEntregaReal || '-'}</div>
+                      </td>
+
+                      {/* 14. Tiempo Estimado Completo */}
+                      <td className="px-3 py-1 text-gray-800 whitespace-nowrap">
+                        <input
+                          type="text"
+                          value={item.tiempoEstimadoCompleto || calculateTiempoEstimadoAuto(item)}
+                          placeholder="Ej: 15 días"
+                          disabled={isUpdatingThis}
+                          onChange={(e) => handleQuickUpdateField(item.id, { tiempoEstimadoCompleto: e.target.value })}
+                          className="px-1.5 py-0.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-indigo-500 bg-white max-w-[130px]"
+                        />
+                      </td>
+
+                      {/* 15. Tiempo Estimado Ajuste */}
+                      <td className="px-3 py-1 text-gray-800 whitespace-nowrap">
+                        <input
+                          type="text"
+                          value={item.tiempoEstimadoAjuste || ''}
+                          placeholder="Ej: +3 días"
+                          disabled={isUpdatingThis}
+                          onChange={(e) => handleQuickUpdateField(item.id, { tiempoEstimadoAjuste: e.target.value })}
+                          className="px-1.5 py-0.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-indigo-500 bg-white max-w-[120px]"
+                        />
+                      </td>
+
+                      {/* 16. Observación (Sin texto por defecto) */}
+                      <td className="px-3 py-1 text-gray-700">
+                        {(() => {
+                          const obs = item.observaciones || '';
+                          const isAutoText = obs.includes('Actualizado desde Prospect') || 
+                                             obs.includes('Sincronizado') || 
+                                             obs.includes('Ficha creada') || 
+                                             obs.includes('Traspasado desde');
+                          const cleanObs = isAutoText ? '' : obs;
+                          return cleanObs ? (
+                            <span className="truncate max-w-[160px] block text-xs" title={cleanObs}>
+                              {cleanObs}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs font-normal">-</span>
+                          );
+                        })()}
+                      </td>
+
+                      {/* 17. Acciones */}
+                      <td className="px-4 py-1 text-right whitespace-nowrap sticky right-0 bg-white shadow-xs">
+                        <div className="flex items-center justify-end space-x-1">
+                          {isAprobado && (
                             <button
-                              onClick={() => handleDelete(item.id, item.proyecto)}
-                              className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-                              title="Eliminar"
+                              onClick={() => handleConvertToFicha(item)}
+                              className="px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold transition-all shadow-2xs flex items-center gap-0.5"
+                              title="Traspasar datos a Ficha de Proyecto"
                             >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
+                              🚀 Ficha
                             </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          )}
+
+                          <button
+                            onClick={() => handleOpenEditModal(item)}
+                            className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                            title="Editar Requerimiento"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+
+                          <button
+                            onClick={() => handleDelete(item.id, item.proyecto)}
+                            className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                            title="Eliminar"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Control de Paginación */}
+          <div className="bg-slate-50 border-t border-gray-200 px-4 py-2.5 flex-shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            {/* Lado Izquierdo: Info & Selector Por Página */}
+            <div className="flex flex-wrap items-center gap-3 text-gray-600">
+              <span>
+                Mostrando <strong className="text-gray-900 font-semibold">{itemsPerPage === -1 ? (filteredDemandas.length > 0 ? 1 : 0) : Math.min((currentPage - 1) * itemsPerPage + 1, filteredDemandas.length)}</strong> a <strong className="text-gray-900 font-semibold">{itemsPerPage === -1 ? filteredDemandas.length : Math.min(currentPage * itemsPerPage, filteredDemandas.length)}</strong> de <strong className="text-gray-900 font-semibold">{filteredDemandas.length}</strong> requerimientos
+              </span>
+
+              <div className="flex items-center gap-1.5 ml-2">
+                <span className="text-gray-500">Mostrar:</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="px-2 py-1 bg-white border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value={10}>10 por pág.</option>
+                  <option value={25}>25 por pág.</option>
+                  <option value={50}>50 por pág.</option>
+                  <option value={-1}>Todos</option>
+                </select>
+              </div>
             </div>
-          )}
-        </div>
-      </main>
+
+            {/* Lado Derecho: Botones Navegación de Páginas (Siempre Visibles) */}
+            <div className="flex items-center space-x-1">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-2 py-1 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold"
+                title="Primera Página"
+              >
+                «
+              </button>
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="px-2.5 py-1 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+              >
+                Anterior
+              </button>
+
+              {/* Números de página */}
+              {Array.from({ length: Math.max(totalPages, 1) }, (_, i) => i + 1)
+                .filter(page => {
+                  return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+                })
+                .map((page, idx, array) => {
+                  const prevPage = array[idx - 1];
+                  const showEllipsis = prevPage && page - prevPage > 1;
+
+                  return (
+                    <React.Fragment key={page}>
+                      {showEllipsis && <span className="px-1 text-gray-400">...</span>}
+                      <button
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-2.5 py-1 rounded-md border text-xs font-bold transition-all ${
+                          currentPage === page
+                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    </React.Fragment>
+                  );
+                })}
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage >= totalPages || totalPages <= 1}
+                className="px-2.5 py-1 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+              >
+                Siguiente
+              </button>
+
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage >= totalPages || totalPages <= 1}
+                className="px-2 py-1 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold"
+                title="Última Página"
+              >
+                »
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  </main>
 
       {/* Modal Crear / Editar Requerimiento */}
       {isModalOpen && (
@@ -1324,6 +1627,111 @@ const GestionDemanda: React.FC = () => {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Previsualización Importación Excel */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl overflow-hidden border border-gray-100 flex flex-col max-h-[90vh]">
+            {/* Header del Modal */}
+            <div className="px-6 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <span>📊</span> Importación de Proyectos desde Excel
+                </h3>
+                <p className="text-xs text-emerald-100">
+                  Se detectaron <strong className="font-extrabold underline">{importedPreviewItems.length}</strong> proyectos listos para importar a Gestión de la Demanda.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsImportModalOpen(false)}
+                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Tabla de Previsualización */}
+            <div className="p-4 flex-1 overflow-auto min-h-0">
+              <div className="border border-gray-200 rounded-xl overflow-hidden shadow-xs">
+                <table className="min-w-full divide-y divide-gray-200 text-left text-xs">
+                  <thead className="bg-slate-100 text-gray-700 font-semibold uppercase tracking-wider sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2">#</th>
+                      <th className="px-3 py-2">Código</th>
+                      <th className="px-4 py-2">Nombre Proyecto</th>
+                      <th className="px-3 py-2">Tipo</th>
+                      <th className="px-3 py-2">Área</th>
+                      <th className="px-3 py-2">Responsable TI</th>
+                      <th className="px-3 py-2">Estado</th>
+                      <th className="px-3 py-2">Prioridad</th>
+                      <th className="px-3 py-2">Etapa</th>
+                      <th className="px-3 py-2">Observaciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {importedPreviewItems.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="px-3 py-2 font-mono text-gray-400">{idx + 1}</td>
+                        <td className="px-3 py-2 font-mono font-bold text-indigo-700">{item.codigo || '-'}</td>
+                        <td className="px-4 py-2 font-semibold text-gray-900">{item.proyecto}</td>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${item.tipoProyecto === 'Interno' ? 'bg-indigo-100 text-indigo-800' : 'bg-purple-100 text-purple-800'}`}>
+                            {item.tipoProyecto || 'Interno'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-gray-700">{item.area || 'Comercial'}</td>
+                        <td className="px-3 py-2 text-gray-800 font-medium">{item.responsableTI || '-'}</td>
+                        <td className="px-3 py-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+                            {item.estado || 'Solicitud'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-gray-700">{item.prioridad || 'Media'}</td>
+                        <td className="px-3 py-2 font-bold text-gray-600">{item.etapa || 'Ingreso'}</td>
+                        <td className="px-3 py-2 text-gray-500 truncate max-w-[150px]">{item.observaciones || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Footer con Botones */}
+            <div className="px-6 py-3 bg-slate-50 border-t border-gray-200 flex items-center justify-between flex-shrink-0">
+              <span className="text-xs text-gray-500 font-medium">
+                * Los proyectos importados quedarán guardados inmediatamente en su base de datos.
+              </span>
+              <div className="flex items-center space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(false)}
+                  disabled={isImporting}
+                  className="px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-200 rounded-lg transition-colors border border-gray-300"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmImport}
+                  disabled={isImporting}
+                  className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-all flex items-center gap-2"
+                >
+                  {isImporting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Importando proyectos...</span>
+                    </>
+                  ) : (
+                    <span>Confirmar e Importar {importedPreviewItems.length} Proyectos</span>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

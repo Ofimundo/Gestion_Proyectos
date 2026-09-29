@@ -122,13 +122,12 @@ const Dashboard: React.FC = () => {
   const pctNoIniciados = Math.round((proyectosNoIniciados / totalP) * 100);
 
   const modulesQuickLinks = [
-    { name: 'Colaboradores', route: '/profesionales', icon: '👥', color: 'bg-blue-500' },
+    { name: 'Gestión Colaboradores', route: '/profesionales', icon: '👥', color: 'bg-blue-500' },
+    { name: 'Gestión Demanda', route: '/gestion-demanda', icon: '📥', color: 'bg-sky-600' },
     { name: `Prospectos (${fichasProspecto.length})`, route: '/fichas-prospecto', icon: '📑', color: 'bg-indigo-500' },
     { name: 'Fichas de Proyecto', route: '/fichas-proyecto', icon: '📋', color: 'bg-purple-500' },
     { name: 'Dashboard HH', route: '/dashboard-proyectos', icon: '📊', color: 'bg-green-500' },
     { name: 'Solicitud Proyecto', route: '/solicitud-proyecto', icon: '📝', color: 'bg-orange-500' },
-    { name: 'Colaboradores HH', route: '/dashboard-profesional', icon: '👨‍💻', color: 'bg-teal-500' },
-    { name: 'Gestión Demanda', route: '/gestion-demanda', icon: '📥', color: 'bg-sky-600' },
   ];
 
   const handleLogout = () => {
@@ -256,6 +255,31 @@ const Dashboard: React.FC = () => {
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
               ¡Bienvenido, {user?.nombre || 'Usuario'}! 👋
             </h1>
+          </div>
+
+          {/* Menú de Acceso Rápido a Módulos (Botonera Horizontal) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <span>📍</span> Accesos Rápidos a Módulos de Gestión
+              </h3>
+              <span className="text-xs text-gray-400">Menú siempre disponible en la ☰ hamburguesa</span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {modulesQuickLinks.map((mod, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => navigate(mod.route)}
+                  className="flex flex-col items-center justify-center p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/40 transition-all text-center group cursor-pointer"
+                >
+                  <span className="text-2xl mb-1 group-hover:scale-110 transition-transform">{mod.icon}</span>
+                  <span className="text-xs font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors line-clamp-1">
+                    {mod.name}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Tarjetas de Indicadores Principales (KPI Cards) */}
@@ -560,30 +584,7 @@ const Dashboard: React.FC = () => {
             </div>
           )}
 
-          {/* Menú de Acceso Rápido a Módulos (Botonera Horizontal) */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <span>📍</span> Accesos Rápidos a Módulos de Gestión
-              </h3>
-              <span className="text-xs text-gray-400">Menú siempre disponible en la ☰ hamburguesa</span>
-            </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
-              {modulesQuickLinks.map((mod, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => navigate(mod.route)}
-                  className="flex flex-col items-center justify-center p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/40 transition-all text-center group cursor-pointer"
-                >
-                  <span className="text-2xl mb-1 group-hover:scale-110 transition-transform">{mod.icon}</span>
-                  <span className="text-xs font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors line-clamp-1">
-                    {mod.name}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
 
         </main>
       </div>

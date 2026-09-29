@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
 import demandaService from '../services/demandaService';
 import { showSuccess, showError, showWarning } from './Toast';
@@ -198,6 +198,9 @@ const FichasProspecto: React.FC<FichasProspectoProps> = () => {
   // Custom Delete Confirm Modal State
   const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
+
+  // Ref de la Tabla
+  const bottomScrollRef = useRef<HTMLDivElement>(null);
 
   // Softland Clients and Salespeople Autocomplete States
   const [clientesOriginales, setClientesOriginales] = useState<any[]>([]);
@@ -769,10 +772,14 @@ const FichasProspecto: React.FC<FichasProspectoProps> = () => {
               No se encontraron prospectos de proyectos
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col relative">
+              {/* Contenedor Principal de la Tabla */}
+              <div 
+                ref={bottomScrollRef}
+                className="overflow-auto max-h-[calc(100vh-230px)] relative shadow-inner custom-scrollbar"
+              >
                 <table className="min-w-full divide-y divide-gray-200 text-left">
-                  <thead className="bg-gray-50 text-gray-600 text-xs font-bold uppercase tracking-wider">
+                  <thead className="bg-gray-50 text-gray-600 text-xs font-bold uppercase tracking-wider sticky top-0 z-20 shadow-xs border-b border-gray-200">
                     <tr>
                       <th className="px-4 py-3">Código</th>
                       <th className="px-4 py-3">Nombre Proyecto</th>

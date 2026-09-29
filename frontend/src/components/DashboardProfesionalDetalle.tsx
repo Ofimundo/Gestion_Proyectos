@@ -30,7 +30,11 @@ interface ProyectoAsignado {
 }
 
 
-const DashboardProfesionalDetalle: React.FC = () => {
+interface DashboardProfesionalDetalleProps {
+  embedded?: boolean;
+}
+
+const DashboardProfesionalDetalle: React.FC<DashboardProfesionalDetalleProps> = ({ embedded = false }) => {
   const navigate = useNavigate();
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
   const [loading, setLoading] = useState(true);
@@ -239,39 +243,57 @@ const DashboardProfesionalDetalle: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="inline-flex items-center justify-center px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-xs sm:text-sm font-medium rounded-md"
-              >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-                Volver
-              </button>
-              <h1 className="text-lg sm:text-xl font-bold text-gray-800">Dashboard por Colaborador</h1>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={exportarExcel}
-                className="inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm font-medium rounded-md"
-              >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Exportar a Excel
-              </button>
+    <div className={embedded ? "w-full" : "min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50"}>
+      {/* Header (Solo si no está embebido) */}
+      {!embedded && (
+        <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className="inline-flex items-center justify-center px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-xs sm:text-sm font-medium rounded-md"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  Volver
+                </button>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-800">Dashboard por Colaborador</h1>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={exportarExcel}
+                  className="inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm font-medium rounded-md"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Exportar a Excel
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="max-w-7xl mx-auto py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
+      <div className={embedded ? "w-full py-4" : "max-w-7xl mx-auto py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8"}>
+        {embedded && (
+          <div className="flex justify-between items-center mb-4 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <span>📊</span> Colaboradores HH (Asignación y Proyectos)
+            </h2>
+            <button
+              onClick={exportarExcel}
+              className="inline-flex items-center justify-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm font-medium rounded-md shadow-sm transition-colors"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Exportar a Excel
+            </button>
+          </div>
+        )}
         {/* Filtros */}
         <div className="bg-white rounded-lg shadow-md p-4 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

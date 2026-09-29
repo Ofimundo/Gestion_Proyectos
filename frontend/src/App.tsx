@@ -7,7 +7,7 @@ import {
   useNavigate,
   useLocation,
 } from "react-router-dom";
-import DashboardProfesionalDetalle from './components/DashboardProfesionalDetalle';
+
 import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Login from "./components/Login";
@@ -210,11 +210,7 @@ function AppRoutes() {
       />
       <Route
         path="/dashboard-profesional"
-        element={
-          <ProtectedRoute>
-            <DashboardProfesionalDetalle />
-          </ProtectedRoute>
-        }
+        element={<Navigate to="/profesionales" replace />}
       />
       <Route
         path="/solicitud-proyecto"
