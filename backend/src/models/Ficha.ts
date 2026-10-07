@@ -199,6 +199,13 @@ export class FichaModel {
         if (!ficha) {
             throw new Error('Error al crear la ficha');
         }
+
+        try {
+            await this.createOrUpdateDemandaFromFicha(ficha);
+        } catch (demandaErr) {
+            console.error('Error al sincronizar Ficha de Proyecto a Demanda en creación:', demandaErr);
+        }
+
         return ficha;
     }
 
@@ -460,6 +467,13 @@ export class FichaModel {
         if (!updated) {
             throw new Error('Ficha no encontrada');
         }
+
+        try {
+            await this.createOrUpdateDemandaFromFicha(updated);
+        } catch (demandaErr) {
+            console.error('Error al sincronizar Ficha de Proyecto a Demanda en actualización:', demandaErr);
+        }
+
         return updated;
     }
 
@@ -553,6 +567,124 @@ export class FichaModel {
             created_at: f.FechaCreacion ? new Date(f.FechaCreacion).toISOString() : undefined,
             updated_at: f.FechaActualizacion ? new Date(f.FechaActualizacion).toISOString() : undefined
         };
+    }
+
+    public static async createOrUpdateDemandaFromFicha(data: Partial<Ficha>): Promise<void> {
+        try {
+            const db = await getDatabase();
+            const projName = (data.nombreProyecto || '').trim();
+            const code = (data.codigo || '').trim();
+
+            if (!projName) return;
+
+            const check = await db.request()
+                .input('NombreProyecto', sql.NVarChar, projName)
+                .input('Codigo', sql.NVarChar, code)
+                .query(`
+                    SELECT Id FROM GestionDemanda 
+                    WHERE (Proyecto IS NOT NULL AND LOWER(LTRIM(RTRIM(Proyecto))) = LOWER(LTRIM(RTRIM(@NombreProyecto))))
+                       OR (Codigo IS NOT NULL AND Codigo <> '' AND Codigo = @Codigo)
+                `);
+
+            const etapaVal = data.etapaLifecycle || (data as any).etapa || 'Ingreso';
+            const responsable = data.responsable || data.lider || 'Por asignar';
+            const cliente = data.cliente || data.contraparte || 'Cliente Interno';
+            const fInicio = data.fechaInicio ? new Date(data.fechaInicio) : new Date();
+            const fTermino = data.fechaTermino ? new Date(data.fechaTermino) : null;
+
+            if (check.recordset.length === 0) {
+                const newCode = code || `FCH-${Math.floor(1000 + Math.random() * 9000)}`;
+                await db.request()
+                    .input('Codigo', sql.NVarChar, newCode)
+                    .input('Proyecto', sql.NVarChar, projName)
+                    .input('TipoProyecto', sql.NVarChar, 'Interno')
+                    .input('Prioridad', sql.NVarChar, 'media')
+                    .input('Estado', sql.NVarChar, 'Aprobado')
+                    .input('DecisionComite', sql.NVarChar, 'Aprobado')
+                    .input('Etapa', sql.NVarChar, etapaVal)
+                    .input('Area', sql.NVarChar, cliente)
+                    .input('PlanificacionEstimada', sql.Date, fInicio)
+                    .input('FechaEstimadaEntrega', sql.Date, fTermino)
+                    .input('ResponsableTI', sql.NVarChar, responsable)
+                    .input('Solicitante', sql.NVarChar, cliente)
+                    .input('Observaciones', sql.NVarChar, data.descripcion || '')
+                    .query(`
+                        INSERT INTO GestionDemanda (
+                            Codigo, Proyecto, TipoProyecto, Prioridad, Estado, DecisionComite, Etapa, Area,
+                            PlanificacionEstimada, FechaEstimadaEntrega, ResponsableTI, Solicitante, Observaciones, FechaCreacion
+                        ) VALUES (
+                            @Codigo, @Proyecto, @TipoProyecto, @Prioridad, @Estado, @DecisionComite, @Etapa, @Area,
+                            @PlanificacionEstimada, @FechaEstimadaEntrega, @ResponsableTI, @Solicitante, @Observaciones, GETDATE()
+                        )
+                    `);
+                console.log(`✅ Ficha de Proyecto "${projName}" reflejada automáticamente en Gestión de la Demanda.`);
+            } else {
+                const demandaId = check.recordset[0].Id;
+                await db.request()
+                    .input('Id', sql.Int, demandaId)
+                    .input('Codigo', sql.NVarChar, code || '')
+                    .input('Etapa', sql.NVarChar, etapaVal)
+                    .input('Area', sql.NVarChar, cliente)
+                    .input('PlanificacionEstimada', sql.Date, fInicio)
+                    .input('FechaEstimadaEntrega', sql.Date, fTermino)
+                    .input('ResponsableTI', sql.NVarChar, responsable)
+                    .input('Solicitante', sql.NVarChar, cliente)
+                    .input('Observaciones', sql.NVarChar, data.descripcion || '')
+                    .query(`
+                        UPDATE GestionDemanda
+                        SET Etapa = @Etapa,
+                            Area = @Area,
+                            PlanificacionEstimada = COALESCE(@PlanificacionEstimada, PlanificacionEstimada),
+                            FechaEstimadaEntrega = @FechaEstimadaEntrega,
+                            ResponsableTI = @ResponsableTI,
+                            Solicitante = @Solicitante,
+                            Observaciones = @Observaciones,
+                            FechaActualizacion = GETDATE()
+                        WHERE Id = @Id
+                    `);
+                console.log(`✅ Demanda (Id ${demandaId}) actualizada desde Ficha de Proyecto "${projName}".`);
+            }
+        } catch (err) {
+            console.error('Error al reflejar Ficha de Proyecto en Gestión de la Demanda:', err);
+        }
+    }
+
+    public static async syncAllToDemanda(): Promise<void> {
+        try {
+            const db = await getDatabase();
+            await db.request().query(`
+                INSERT INTO GestionDemanda (
+                    Codigo, Proyecto, TipoProyecto, Prioridad, Estado, DecisionComite, Etapa, Area,
+                    PlanificacionEstimada, FechaEstimadaEntrega, ResponsableTI, Solicitante, Observaciones, FechaCreacion
+                )
+                SELECT 
+                    COALESCE(NULLIF(p.Codigo, ''), f.NombreProyecto) AS Codigo,
+                    f.NombreProyecto AS Proyecto,
+                    'Interno' AS TipoProyecto,
+                    'media' AS Prioridad,
+                    'Aprobado' AS Estado,
+                    'Aprobado' AS DecisionComite,
+                    COALESCE(NULLIF(f.EtapaLifecycle, ''), 'Ingreso') AS Etapa,
+                    COALESCE(NULLIF(p.Cliente, ''), 'General') AS Area,
+                    COALESCE(CONVERT(VARCHAR(10), f.FechaInicio, 120), CONVERT(VARCHAR(10), GETDATE(), 120)) AS PlanificacionEstimada,
+                    CONVERT(VARCHAR(10), f.FechaFin, 120) AS FechaEstimadaEntrega,
+                    COALESCE(NULLIF(p.Lider, ''), 'Por asignar') AS ResponsableTI,
+                    COALESCE(NULLIF(p.Cliente, ''), 'Cliente Interno') AS Solicitante,
+                    COALESCE(f.Descripcion, '') AS Observaciones,
+                    GETDATE() AS FechaCreacion
+                FROM FichasProyecto f
+                LEFT JOIN Proyectos p ON f.ProyectoId = p.Id
+                WHERE f.NombreProyecto IS NOT NULL 
+                  AND LTRIM(RTRIM(f.NombreProyecto)) <> ''
+                  AND NOT EXISTS (
+                      SELECT 1 FROM GestionDemanda gd 
+                      WHERE LOWER(LTRIM(RTRIM(gd.Proyecto))) = LOWER(LTRIM(RTRIM(f.NombreProyecto)))
+                         OR (p.Codigo IS NOT NULL AND p.Codigo <> '' AND gd.Codigo = p.Codigo)
+                  );
+            `);
+        } catch (err) {
+            console.error('Error en FichaModel.syncAllToDemanda:', err);
+        }
     }
 }
 export default FichaModel;

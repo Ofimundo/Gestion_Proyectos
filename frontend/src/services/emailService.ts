@@ -121,7 +121,7 @@ const emailService = {
       const response = await api.post('/send-email', {
         to: email,
         subject: `✅ Solicitud creada: ${nombreProyecto}`,
-        link: `${window.location.origin}/solicitud-proyecto`,
+        link: `${window.location.origin}/formulario-solicitud`,
         nombreProyecto: nombreProyecto,
         nombreSolicitante: nombreSolicitante,
         area: area,
@@ -198,7 +198,7 @@ const emailService = {
         to: email,
         nombreProyecto: nombreProyecto,
         nombreSolicitante: nombreSolicitante,
-        comentarios: comentarios || 'El proyecto ha sido aprobado para su ejecución.'
+        comentarios: comentarios || 'Su solicitud se revisará en Gestión de la Demanda para evaluar.'
       });
       
       return {
@@ -324,9 +324,46 @@ const emailService = {
     }
   },
 
+  /**
+   * Enviar notificación de ASIGNACIÓN A LÍDER DE PROYECTO
+   */
+  sendLiderAsignadoNotification: async (
+    email: string,
+    liderNombre: string,
+    nombreProyecto: string,
+    codigo?: string,
+    cliente?: string
+  ): Promise<EmailResponse> => {
+    try {
+      console.log('📧 Enviando notificación a Líder de Proyecto:', email);
+      
+      const response = await api.post('/notify-lider', {
+        to: email,
+        liderNombre,
+        nombreProyecto,
+        codigo,
+        cliente,
+        link: `${window.location.origin}/formulario-ficha`
+      });
+      
+      return {
+        success: response.data.success,
+        message: response.data.message || 'Notificación enviada al líder correctamente',
+        simulated: response.data.simulated || false
+      };
+    } catch (error: any) {
+      console.error('❌ Error enviando notificación al líder:', error);
+      return {
+        success: false,
+        message: error.response?.data?.error || error.message || 'Error al enviar notificación al líder'
+      };
+    }
+  },
+
   // ============================================
   // EMAILS ADICIONALES
   // ============================================
+
 
   /**
    * Enviar email de recuperación de contraseña

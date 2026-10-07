@@ -281,6 +281,7 @@ const ModalDetallesSolicitud: React.FC<{
   onClose: () => void;
   solicitud: SolicitudProyecto | null;
 }> = ({ isOpen, onClose, solicitud }) => {
+  const navigate = useNavigate();
   if (!isOpen || !solicitud) return null;
 
   const getEstadoColor = (estado: string) => {
@@ -416,9 +417,9 @@ const ModalDetallesSolicitud: React.FC<{
             <div className="space-y-2">
               <div><span className="text-sm text-gray-500">Descripción General</span><p className="font-medium">{solicitud.descripcionGeneral || 'No especificado'}</p></div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><span className="text-sm text-gray-500">Presupuesto</span><p className="font-medium text-green-600">${solicitud.presupuesto?.toLocaleString() || '0'}</p></div>
+                <div><span className="text-sm text-gray-500">Presupuesto (UF)</span><p className="font-medium text-green-600">UF {solicitud.presupuesto?.toLocaleString() || '0'}</p></div>
                 <div><span className="text-sm text-gray-500">Tiempo Estimado</span><p className="font-medium">{solicitud.tiempo || 'No especificado'}</p></div>
-                <div><span className="text-sm text-gray-500">Valor Dólar</span><p className="font-medium">${solicitud.valorDolar || '0'}</p></div>
+                <div><span className="text-sm text-gray-500">Valor UF</span><p className="font-medium">${solicitud.valorDolar || '0'}</p></div>
               </div>
               <div><span className="text-sm text-gray-500">Otras Restricciones</span><p className="font-medium">{solicitud.otrasRestricciones || 'No especificado'}</p></div>
               <div><span className="text-sm text-gray-500">Riesgos</span><p className="font-medium">{solicitud.riesgos || 'No especificado'}</p></div>
@@ -458,7 +459,19 @@ const ModalDetallesSolicitud: React.FC<{
           )}
 
           <div className="flex justify-end gap-3 pt-4 border-t">
-            <button onClick={onClose} className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+            <button
+              onClick={() => {
+                onClose();
+                navigate('/fichas', { state: { convertFromSolicitud: solicitud } });
+              }}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md flex items-center gap-2 font-medium shadow-sm transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Pasar a Ficha de Proyecto
+            </button>
+            <button onClick={onClose} className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-md">
               Cerrar
             </button>
           </div>
@@ -691,29 +704,6 @@ const SolicitudProyecto: React.FC = () => {
         if (response.data.success) {
           showToast('Solicitud creada exitosamente', 'success');
           await cargarSolicitudes();
-          
-          if (nuevaSolicitud.email) {
-            try {
-              const emailResult = await emailService.sendConfirmacionRegistro(
-                nuevaSolicitud.email,
-                nuevaSolicitud.nombreProyecto || 'Proyecto sin nombre',
-                nuevaSolicitud.nombreSolicitante || 'Solicitante',
-                nuevaSolicitud.area || 'Área no especificada',
-                nuevaSolicitud.descripcionGeneral || 'Sin descripción',
-                nuevaSolicitud.presupuesto || 0
-              );
-              
-              if (emailResult.success) {
-                showToast('Email de confirmación enviado', 'success');
-              } else {
-                console.warn('⚠️ Error enviando email:', emailResult.message);
-                showToast('Solicitud creada, pero no se pudo enviar el email', 'warning');
-              }
-            } catch (errEmail) {
-              console.error('Error enviando email:', errEmail);
-              showToast('Solicitud creada, pero no se pudo enviar el email', 'warning');
-            }
-          }
         }
       }
       setMostrarFormulario(false);
@@ -875,7 +865,7 @@ const SolicitudProyecto: React.FC = () => {
             reqDetail.email,
             reqDetail.nombreProyecto,
             reqDetail.nombreSolicitante,
-            observacionesAprobacion || 'El proyecto ha sido aprobado para su ejecución.'
+            observacionesAprobacion || 'Su solicitud se revisará en Gestión de la Demanda para evaluar.'
           );
           
           if (emailResult.success) {
@@ -1198,9 +1188,9 @@ const SolicitudProyecto: React.FC = () => {
                   <div className="space-y-4">
                     <div><label className="block text-sm font-medium text-gray-700">Descripción General</label><textarea name="descripcionGeneral" value={formData.descripcionGeneral || ''} onChange={handleChange} rows={3} className="mt-1 w-full px-3 py-2 border rounded-md" /></div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div><label className="block text-sm font-medium text-gray-700">Presupuesto (USD)</label><input type="number" name="presupuesto" value={formData.presupuesto || ''} onChange={handleChange} className="mt-1 w-full px-3 py-2 border rounded-md" /></div>
+                      <div><label className="block text-sm font-medium text-gray-700">Presupuesto (UF)</label><input type="number" name="presupuesto" value={formData.presupuesto || ''} onChange={handleChange} className="mt-1 w-full px-3 py-2 border rounded-md" /></div>
                       <div><label className="block text-sm font-medium text-gray-700">Tiempo Estimado</label><input type="text" name="tiempo" value={formData.tiempo || ''} onChange={handleChange} placeholder="Ej: 3 meses" className="mt-1 w-full px-3 py-2 border rounded-md" /></div>
-                      <div><label className="block text-sm font-medium text-gray-700">Valor Dólar</label><input type="number" step="0.01" name="valorDolar" value={formData.valorDolar || ''} onChange={handleChange} className="mt-1 w-full px-3 py-2 border rounded-md" /></div>
+                      <div><label className="block text-sm font-medium text-gray-700">Valor UF</label><input type="number" step="0.01" name="valorDolar" value={formData.valorDolar || ''} onChange={handleChange} className="mt-1 w-full px-3 py-2 border rounded-md" /></div>
                     </div>
                     <div><label className="block text-sm font-medium text-gray-700">Otras Restricciones</label><textarea name="otrasRestricciones" value={formData.otrasRestricciones || ''} onChange={handleChange} rows={2} className="mt-1 w-full px-3 py-2 border rounded-md" /></div>
                     <div><label className="block text-sm font-medium text-gray-700">Riesgos</label><textarea name="riesgos" value={formData.riesgos || ''} onChange={handleChange} rows={2} className="mt-1 w-full px-3 py-2 border rounded-md" /></div>
@@ -1294,7 +1284,23 @@ const SolicitudProyecto: React.FC = () => {
                           <span className="text-gray-400 text-sm">Sin asignar</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center"><span className={`px-2 py-1 text-xs rounded-full ${getEstadoColor(solicitud.estado)}`}>{solicitud.estado === 'En Revision' ? 'En Revisión' : solicitud.estado}</span></td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className={`px-2 py-1 text-xs rounded-full ${getEstadoColor(solicitud.estado)}`}>
+                            {solicitud.estado === 'En Revision' ? 'En Revisión' : solicitud.estado}
+                          </span>
+                          <button
+                            onClick={() => navigate('/fichas', { state: { convertFromSolicitud: solicitud } })}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-900 border border-indigo-200 rounded-md transition-all shadow-sm transform hover:scale-105"
+                            title="Pasar esta información a la Ficha de Proyecto"
+                          >
+                            <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span>Pasar a Ficha</span>
+                          </button>
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex justify-center gap-1">
                           <button 

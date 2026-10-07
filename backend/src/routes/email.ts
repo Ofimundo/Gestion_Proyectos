@@ -2,6 +2,7 @@ import express from 'express';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { ClientSecretCredential } from '@azure/identity';
 import type { Request, Response } from 'express';
+import os from 'os';
 
 const router = express.Router();
 
@@ -11,6 +12,71 @@ const clientSecret = process.env.CLIENT_SECRET;
 const fromEmail = process.env.FROM_EMAIL || 'marrano@ofimundo.cl';
 // ✅ Ya no necesitamos ADMIN_EMAIL separado, usamos fromEmail como admin
 const adminEmail = fromEmail; // El admin es la misma cuenta que envía los emails
+
+// Obtener la IP local de red del servidor para sustituir localhost si no hay dominio
+export function getNetworkIp(): string {
+    try {
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+            for (const iface of interfaces[name] || []) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    return iface.address;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error al detectar IP de red:', e);
+    }
+    return 'localhost';
+}
+
+// Obtener la URL base accesible del Frontend
+export function getBaseFrontendUrl(req?: Request): string {
+    // 1. Si FRONTEND_URL está definido en .env y no es localhost, usarlo
+    if (process.env.FRONTEND_URL && process.env.FRONTEND_URL.trim() !== '' && !process.env.FRONTEND_URL.includes('localhost') && !process.env.FRONTEND_URL.includes('127.0.0.1')) {
+        return process.env.FRONTEND_URL.trim().replace(/\/$/, '');
+    }
+
+    // 2. Si viene origin o host en el request y no es localhost
+    if (req) {
+        const origin = req.headers.origin;
+        if (origin && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+            return origin.replace(/\/$/, '');
+        }
+
+        const host = req.headers.host;
+        if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+            const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+            const hostWithoutPort = host.split(':')[0];
+            return `${protocol}://${hostWithoutPort}:5173`;
+        }
+    }
+
+    // 3. Si FRONTEND_URL está explícitamente configurado en .env (incluso IP o localhost)
+    if (process.env.FRONTEND_URL && process.env.FRONTEND_URL.trim() !== '') {
+        return process.env.FRONTEND_URL.trim().replace(/\/$/, '');
+    }
+
+    // 4. Autodetectar IP de red local del servidor (ej: http://192.168.1.X:5173)
+    const ip = getNetworkIp();
+    if (ip !== 'localhost') {
+        return `http://${ip}:5173`;
+    }
+
+    return 'http://localhost:5173';
+}
+
+// Formatear enlaces para reemplazar 'localhost' o '127.0.0.1' por la IP/URL accesible desde otra PC
+export function formatUrlForEmail(url?: string, fallbackPath: string = '/fichas', req?: Request): string {
+    const baseUrl = getBaseFrontendUrl(req);
+    if (!url || url === '#') {
+        return `${baseUrl}${fallbackPath.startsWith('/') ? '' : '/'}${fallbackPath}`;
+    }
+    if (url.includes('localhost') || url.includes('127.0.0.1')) {
+        return url.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/, baseUrl);
+    }
+    return url;
+}
 
 let credential: any = null;
 let graphClient: any = null;
@@ -67,14 +133,16 @@ router.post('/send-email', async (req: Request, res: Response) => {
         });
     }
 
+    const finalLink = formatUrlForEmail(link, '/formulario-solicitud', req);
+
     if (!graphReady || !graphClient) {
         console.log('⚠️ Graph API no disponible - Simulando envío');
-        console.log(`📧 Link de formulario para ${to}: ${link}`);
+        console.log(`📧 Link de formulario para ${to}: ${finalLink}`);
         return res.json({ 
             success: true, 
             message: 'Email simulado (Graph API no configurado)', 
             simulated: true, 
-            link 
+            link: finalLink 
         });
     }
 
@@ -96,9 +164,9 @@ router.post('/send-email', async (req: Request, res: Response) => {
           </div>
           <p>Complete el formulario haciendo clic aquí:</p>
           <div style="text-align: center; margin: 25px 0;">
-              <a href="${link}" style="background: #0078D4; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">📝 Completar Formulario</a>
+              <a href="${finalLink}" style="background: #0078D4; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">📝 Completar Formulario</a>
           </div>
-          <p style="margin-top: 20px; font-size: 12px; color: #666;">Si el botón no funciona, copie este enlace: ${link}</p>
+          <p style="margin-top: 20px; font-size: 12px; color: #666;">Si el botón no funciona, copie este enlace: ${finalLink}</p>
           <p style="margin-top: 30px; font-size: 12px; color: #666;">Este es un mensaje automático del Sistema de Gestión de Proyectos RPA.</p>
         </div>
       </div>
@@ -247,17 +315,27 @@ router.post('/notify-aprobado', async (req: Request, res: Response) => {
         <!DOCTYPE html>
         <html>
         <head><meta charset="UTF-8"></head>
-        <body style="font-family: Arial, sans-serif;">
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
           <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #4CAF50; border-radius: 10px;">
             <div style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
               <h2 style="color: white; margin: 0;">✅ ¡Solicitud Aprobada!</h2>
             </div>
             <div style="padding: 20px;">
-              <p>Estimado/a <strong>${nombreSolicitante || 'colaborador/a'}</strong>,</p>
+              <p style="font-size: 16px;">Estimado/a <strong>${nombreSolicitante || 'colaborador/a'}</strong>,</p>
               <p>Nos complace informarle que su solicitud para el proyecto <strong>${nombreProyecto}</strong> ha sido <strong style="color: #4CAF50;">APROBADA</strong>.</p>
-              ${comentarios ? `<p><strong>Comentarios adicionales:</strong> ${comentarios}</p>` : ''}
-              <p>El equipo de gestión dará inicio a las siguientes fases del proyecto.</p>
-              <p style="margin-top: 30px; font-size: 12px; color: #666;">Este es un mensaje automático del Sistema de Gestión de Proyectos RPA.</p>
+              
+              <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #4CAF50;">
+                <p style="margin: 0; font-weight: bold; color: #2e7d32; font-size: 15px;">
+                  📋 SE REVISARÁ EN GESTIÓN DE LA DEMANDA PARA EVALUAR.
+                </p>
+                <p style="margin: 5px 0 0 0; font-size: 13px; color: #388e3c;">
+                  Su solicitud ha ingresado a la etapa de evaluación en Gestión de la Demanda, donde el equipo técnico coordinará los siguientes pasos.
+                </p>
+              </div>
+
+              ${comentarios ? `<p style="margin-top: 15px;"><strong>Comentarios adicionales:</strong> ${comentarios}</p>` : ''}
+              
+              <p style="margin-top: 30px; font-size: 12px; color: #666;">Este es un mensaje automático del Sistema de Gestión de Proyectos.</p>
             </div>
           </div>
         </body>
@@ -524,6 +602,140 @@ router.post('/notify-asignacion', async (req: Request, res: Response) => {
         });
     }
 });
+
+// ============================================
+// HELPER & ENDPOINT: NOTIFICAR ASIGNACIÓN A LÍDER DE PROYECTO
+// ============================================
+export interface SendLiderEmailParams {
+    to: string;
+    liderNombre: string;
+    nombreProyecto: string;
+    codigo?: string;
+    cliente?: string;
+    link?: string;
+}
+
+export async function sendLiderNotificationEmail({
+    to,
+    liderNombre,
+    nombreProyecto,
+    codigo,
+    cliente,
+    link
+}: SendLiderEmailParams): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+    console.log(`\n📧 Enviando notificación de ASIGNACIÓN DE LÍDER a: ${to}`);
+    console.log(`📝 Líder: ${liderNombre}, Proyecto: ${nombreProyecto}`);
+
+    if (!to || !nombreProyecto) {
+        console.log('❌ Datos incompletos para notificar al líder');
+        return { success: false, message: 'Faltan datos requeridos: to, nombreProyecto' };
+    }
+
+    const finalLink = formatUrlForEmail(link, '/formulario-ficha');
+
+    const htmlTemplate = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"></head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #0078D4; border-radius: 10px;">
+        <div style="background: linear-gradient(135deg, #0078D4 0%, #00A4EF 100%); padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+          <h2 style="color: white; margin: 0;">👤 Asignación como Líder de Proyecto</h2>
+        </div>
+        <div style="padding: 20px;">
+          <p style="font-size: 16px;">Estimado/a <strong>${liderNombre || 'Líder'}</strong>,</p>
+          <p>Le informamos que ha sido asignado/a como <strong>Líder de Proyecto</strong> para el proyecto <strong>${nombreProyecto}</strong>.</p>
+          
+          <div style="background: #f0f4ff; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #0078D4;">
+            <p style="margin: 4px 0;"><strong>📋 Proyecto:</strong> ${nombreProyecto}</p>
+            ${codigo ? `<p style="margin: 4px 0;"><strong>🔑 Código:</strong> ${codigo}</p>` : ''}
+            ${cliente ? `<p style="margin: 4px 0;"><strong>🏢 Cliente:</strong> ${cliente}</p>` : ''}
+          </div>
+
+          <div style="background: #fff8e1; padding: 15px; border-radius: 8px; margin: 15px 0; border: 1px solid #ffe082;">
+            <p style="margin-top: 0; font-weight: bold; color: #b78103;">📝 Por favor, recuerde ingresar a la ficha del proyecto y rellenar la siguiente información:</p>
+            <ul style="margin: 5px 0; padding-left: 20px; color: #5d4037;">
+              <li><strong>⏱️ HH:</strong> Registrar HH Implementación, HH Periodo y HH Planificadas.</li>
+              <li><strong>📅 Fechas:</strong> Definir Fecha de Inicio y Fecha de Término.</li>
+              <li><strong>💻 Tecnologías:</strong> Especificar las tecnologías y herramientas utilizadas.</li>
+              <li><strong>👥 Recursos:</strong> Asignar los recursos del equipo y la distribución de horas.</li>
+            </ul>
+          </div>
+
+          <p>Puede acceder a la ficha del proyecto en la plataforma haciendo clic aquí:</p>
+
+          <div style="text-align: center; margin: 25px 0;">
+            <a href="${finalLink}" style="background: #0078D4; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">📝 Rellenar Ficha de Proyecto</a>
+          </div>
+          <p style="margin-top: 20px; font-size: 12px; color: #666;">Si el botón no funciona, copie este enlace: ${finalLink}</p>
+
+          <p style="margin-top: 30px; font-size: 12px; color: #666;">Este es un mensaje automático del Sistema de Gestión de Proyectos.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+
+    if (!graphReady || !graphClient) {
+        console.log('⚠️ Graph API no disponible - Simulando notificación de asignación de líder');
+        return { 
+            success: true, 
+            message: 'Notificación simulada (Graph API no configurado)',
+            simulated: true 
+        };
+    }
+
+    try {
+        await graphClient.api(`/users/${fromEmail}/sendMail`).post({
+            message: {
+                subject: `👤 Asignación de Proyecto: ${nombreProyecto} (Completar Ficha)`,
+                body: { contentType: 'HTML', content: htmlTemplate },
+                toRecipients: [{ emailAddress: { address: to } }]
+            },
+            saveToSentItems: true
+        });
+
+        console.log('✅ Notificación enviada al líder exitosamente');
+        return { 
+            success: true, 
+            message: 'Notificación enviada al líder correctamente' 
+        };
+    } catch (error: any) {
+        console.error('❌ Error al enviar notificación al líder:', error.message);
+        if (error.code) console.error('📌 Código de error:', error.code);
+        return { 
+            success: false, 
+            message: error.message || 'Error al enviar email al líder'
+        };
+    }
+}
+
+router.post('/notify-lider', async (req: Request, res: Response) => {
+    const { to, liderNombre, nombreProyecto, codigo, cliente, link } = req.body;
+
+    if (!to || !nombreProyecto) {
+        return res.status(400).json({ 
+            success: false, 
+            error: 'Faltan datos requeridos: to, nombreProyecto' 
+        });
+    }
+
+    const result = await sendLiderNotificationEmail({
+        to,
+        liderNombre,
+        nombreProyecto,
+        codigo,
+        cliente,
+        link
+    });
+
+    if (result.success) {
+        res.json(result);
+    } else {
+        res.status(500).json(result);
+    }
+});
+
 
 // ============================================
 // ENDPOINT: TEST - Verificar estado del servicio

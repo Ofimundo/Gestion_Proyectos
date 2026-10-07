@@ -42,6 +42,19 @@ export const DECISIONES_COMITE = [
 
 export const PRIORIDADES_DEMANDA = ['Alta', 'Media', 'Baja'];
 
+export const ESTADOS_PROSPECTO = [
+  '0% Abordada o Cancelada',
+  '0% Congelado',
+  '0% Perdida',
+  '10% Prospecto (Lead)',
+  '20% Calificación',
+  '30% En elaboración',
+  '60% Enviada',
+  '70% Negociación',
+  '90% Asignada',
+  '100% Aceptada por cliente'
+];
+
 export const SEMAFOROS_DEMANDA = [
   { id: 'Verde', label: '🟢 Verde', badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold' },
   { id: 'Amarillo', label: '🟡 Amarillo', badgeClass: 'bg-amber-100 text-amber-800 border-amber-300 font-bold' },
@@ -341,9 +354,41 @@ const GestionDemanda: React.FC = () => {
   const navigate = useNavigate();
   const [demandas, setDemandas] = useState<DemandaItem[]>([]);
   const [profesionales, setProfesionales] = useState<{ id: string; nombre: string }[]>([]);
-  const [prospectos, setProspectos] = useState<{ id: string; codigo: string; nombreProyecto: string; cliente?: string }[]>([]);
+  const [prospectos, setProspectos] = useState<any[]>([]);
+  const [fichas, setFichas] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Modal de Edición de Ficha de Proyecto
+  const [isFichaModalOpen, setIsFichaModalOpen] = useState<boolean>(false);
+  const [editingFichaProspectoId, setEditingFichaProspectoId] = useState<string | null>(null);
+  const [editingFichaActiveId, setEditingFichaActiveId] = useState<string | null>(null);
+  const [editingDemandaForFicha, setEditingDemandaForFicha] = useState<DemandaItem | null>(null);
+  const [isSavingFicha, setIsSavingFicha] = useState<boolean>(false);
+
+  const [fichaFormData, setFichaFormData] = useState({
+    codigo: '',
+    nombreProyecto: '',
+    estado: '10% Prospecto (Lead)',
+    cliente: '',
+    categoriaCliente: 'Externo' as 'Interno' | 'Externo',
+    empresaInterna: '',
+    gestorComercial: '',
+    centroCosto: '',
+    fechaEstimadaAdjudicacion: '',
+    fechaAdjudicacion: '',
+    valorServicio: 0,
+    margen: 0,
+    rentabilidad: 0,
+    plazoEstimado: '',
+    lineaServicio: '',
+    fechaInicio: '',
+    fechaTermino: '',
+    garantia: '',
+    horasSoporte: 0,
+    totalIngresos: 0,
+    tipoCliente: 'Nuevo'
+  });
 
   // Filtros
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -501,14 +546,16 @@ const GestionDemanda: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const [demandasData, profRes, prospectosRes] = await Promise.all([
+      const [demandasData, profRes, prospectosRes, fichasRes] = await Promise.all([
         demandaService.getAll(),
         api.get('/profesionales').catch(() => ({ data: [] })),
-        api.get('/fichas-prospecto').catch(() => ({ data: [] }))
+        api.get('/fichas-prospecto').catch(() => ({ data: [] })),
+        api.get('/fichas').catch(() => ({ data: [] }))
       ]);
 
       const rawProspectos = prospectosRes.data?.data || prospectosRes.data || [];
       const parsedProspectos = Array.isArray(rawProspectos) ? rawProspectos.map((p: any) => ({
+        ...p,
         id: String(p.id),
         codigo: p.codigo || p.Codigo || `PR-${p.id}`,
         nombreProyecto: p.nombreProyecto || p.NombreProyecto || '',
@@ -517,6 +564,17 @@ const GestionDemanda: React.FC = () => {
 
       setProspectos(parsedProspectos);
 
+      const rawFichas = fichasRes.data?.data || fichasRes.data || [];
+      const parsedFichas = Array.isArray(rawFichas) ? rawFichas.map((f: any) => ({
+        ...f,
+        id: String(f.id),
+        codigo: f.codigo || f.Codigo || '',
+        nombreProyecto: f.nombreProyecto || f.NombreProyecto || '',
+        cliente: f.cliente || f.Cliente || ''
+      })) : [];
+
+      setFichas(parsedFichas);
+
       const rawProfs = profRes.data?.data || profRes.data || [];
       if (Array.isArray(rawProfs)) {
         setProfesionales(rawProfs.map((p: any) => ({ id: String(p.id), nombre: p.nombre || p.nombreProyecto || 'Colaborador' })));
@@ -524,12 +582,18 @@ const GestionDemanda: React.FC = () => {
 
       const cleanedDemandas = (demandasData || []).map(d => {
         const matchingProspecto = parsedProspectos.find(p => 
-          p.nombreProyecto.trim().toLowerCase() === (d.proyecto || '').trim().toLowerCase()
+          (p.nombreProyecto && p.nombreProyecto.trim().toLowerCase() === (d.proyecto || '').trim().toLowerCase()) ||
+          (p.codigo && d.codigo && p.codigo === d.codigo)
+        );
+
+        const matchingFicha = parsedFichas.find(f =>
+          (f.nombreProyecto && f.nombreProyecto.trim().toLowerCase() === (d.proyecto || '').trim().toLowerCase()) ||
+          (f.codigo && d.codigo && f.codigo === d.codigo)
         );
         
         const finalCodigo = (d.codigo && !d.codigo.startsWith('DEM-')) 
           ? d.codigo 
-          : (matchingProspecto ? matchingProspecto.codigo : (d.codigo || ''));
+          : (matchingProspecto ? matchingProspecto.codigo : (matchingFicha ? matchingFicha.codigo : (d.codigo || '')));
 
         const obs = d.observaciones || '';
         const isAutoText = obs.includes('Actualizado desde Prospect') || 
@@ -553,6 +617,155 @@ const GestionDemanda: React.FC = () => {
     }
   };
 
+  const handleOpenFichaEditModal = (item: DemandaItem) => {
+    setEditingDemandaForFicha(item);
+
+    const matchingProspecto = prospectos.find(p =>
+      (p.nombreProyecto && p.nombreProyecto.trim().toLowerCase() === (item.proyecto || '').trim().toLowerCase()) ||
+      (p.codigo && item.codigo && p.codigo.trim().toLowerCase() === item.codigo.trim().toLowerCase())
+    );
+
+    const matchingFicha = fichas.find(f =>
+      (f.nombreProyecto && f.nombreProyecto.trim().toLowerCase() === (item.proyecto || '').trim().toLowerCase()) ||
+      (f.codigo && item.codigo && f.codigo.trim().toLowerCase() === item.codigo.trim().toLowerCase())
+    );
+
+    if (matchingProspecto) {
+      setEditingFichaProspectoId(String(matchingProspecto.id));
+      setEditingFichaActiveId(null);
+      setFichaFormData({
+        codigo: matchingProspecto.codigo || item.codigo || '',
+        nombreProyecto: matchingProspecto.nombreProyecto || item.proyecto || '',
+        estado: matchingProspecto.estado || '10% Prospecto (Lead)',
+        cliente: matchingProspecto.cliente || item.solicitante || item.area || '',
+        categoriaCliente: matchingProspecto.categoriaCliente || item.tipoProyecto || 'Externo',
+        empresaInterna: matchingProspecto.empresaInterna || '',
+        gestorComercial: matchingProspecto.gestorComercial || item.responsableTI || '',
+        centroCosto: matchingProspecto.centroCosto || '',
+        fechaEstimadaAdjudicacion: matchingProspecto.fechaEstimadaAdjudicacion ? matchingProspecto.fechaEstimadaAdjudicacion.split('T')[0] : '',
+        fechaAdjudicacion: matchingProspecto.fechaAdjudicacion ? matchingProspecto.fechaAdjudicacion.split('T')[0] : '',
+        valorServicio: Number(matchingProspecto.valorServicio || 0),
+        margen: Number(matchingProspecto.margen || 0),
+        rentabilidad: Number(matchingProspecto.rentabilidad || 0),
+        plazoEstimado: matchingProspecto.plazoEstimado || '',
+        lineaServicio: matchingProspecto.lineaServicio || item.area || '',
+        fechaInicio: matchingProspecto.fechaInicio ? matchingProspecto.fechaInicio.split('T')[0] : (item.planificacionEstimada || ''),
+        fechaTermino: matchingProspecto.fechaTermino ? matchingProspecto.fechaTermino.split('T')[0] : (item.fechaEstimadaEntrega || ''),
+        garantia: matchingProspecto.garantia || '',
+        horasSoporte: Number(matchingProspecto.horasSoporte || 0),
+        totalIngresos: Number(matchingProspecto.totalIngresos || 0),
+        tipoCliente: matchingProspecto.tipoCliente || 'Nuevo'
+      });
+    } else if (matchingFicha) {
+      setEditingFichaProspectoId(null);
+      setEditingFichaActiveId(String(matchingFicha.id));
+      setFichaFormData({
+        codigo: matchingFicha.codigo || item.codigo || '',
+        nombreProyecto: matchingFicha.nombreProyecto || item.proyecto || '',
+        estado: matchingFicha.estado || '100% Aceptada por cliente',
+        cliente: matchingFicha.cliente || item.solicitante || item.area || '',
+        categoriaCliente: item.tipoProyecto || 'Interno',
+        empresaInterna: '',
+        gestorComercial: matchingFicha.lider || matchingFicha.responsable || item.responsableTI || '',
+        centroCosto: '',
+        fechaEstimadaAdjudicacion: '',
+        fechaAdjudicacion: '',
+        valorServicio: Number(matchingFicha.venta || 0),
+        margen: 0,
+        rentabilidad: 0,
+        plazoEstimado: '',
+        lineaServicio: item.area || '',
+        fechaInicio: matchingFicha.fechaInicio ? matchingFicha.fechaInicio.split('T')[0] : (item.planificacionEstimada || ''),
+        fechaTermino: matchingFicha.fechaTermino ? matchingFicha.fechaTermino.split('T')[0] : (item.fechaEstimadaEntrega || ''),
+        garantia: '',
+        horasSoporte: 0,
+        totalIngresos: Number(matchingFicha.venta || 0),
+        tipoCliente: 'Existente'
+      });
+    } else {
+      setEditingFichaProspectoId(null);
+      setEditingFichaActiveId(null);
+      setFichaFormData({
+        codigo: item.codigo || '',
+        nombreProyecto: item.proyecto || '',
+        estado: '10% Prospecto (Lead)',
+        cliente: item.solicitante || item.area || '',
+        categoriaCliente: item.tipoProyecto || 'Externo',
+        empresaInterna: '',
+        gestorComercial: item.responsableTI || '',
+        centroCosto: '',
+        fechaEstimadaAdjudicacion: item.planificacionEstimada || '',
+        fechaAdjudicacion: '',
+        valorServicio: 0,
+        margen: 0,
+        rentabilidad: 0,
+        plazoEstimado: '',
+        lineaServicio: item.area || 'Comercial',
+        fechaInicio: item.planificacionEstimada || item.fechaSolicitud || '',
+        fechaTermino: item.fechaEstimadaEntrega || '',
+        garantia: '',
+        horasSoporte: 0,
+        totalIngresos: 0,
+        tipoCliente: 'Nuevo'
+      });
+    }
+
+    setIsFichaModalOpen(true);
+  };
+
+  const handleSubmitFichaForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fichaFormData.nombreProyecto || !fichaFormData.cliente) {
+      showWarning('Nombre de Proyecto y Cliente son obligatorios para la Ficha.');
+      return;
+    }
+
+    try {
+      setIsSavingFicha(true);
+      if (editingFichaProspectoId) {
+        await api.put(`/fichas-prospecto/${editingFichaProspectoId}`, fichaFormData);
+        showSuccess('✅ Ficha de prospecto de proyecto actualizada exitosamente.');
+      } else if (editingFichaActiveId) {
+        await api.put(`/fichas/${editingFichaActiveId}`, {
+          codigo: fichaFormData.codigo,
+          nombreProyecto: fichaFormData.nombreProyecto,
+          cliente: fichaFormData.cliente,
+          lider: fichaFormData.gestorComercial,
+          venta: fichaFormData.valorServicio,
+          fechaInicio: fichaFormData.fechaInicio,
+          fechaTermino: fichaFormData.fechaTermino
+        });
+        showSuccess('✅ Ficha de proyecto activo actualizada exitosamente.');
+      } else {
+        const res = await api.post('/fichas-prospecto', fichaFormData);
+        if (res.data?.success) {
+          showSuccess('✅ Ficha de prospecto creada exitosamente.');
+        }
+      }
+
+      if (editingDemandaForFicha) {
+        await demandaService.update(editingDemandaForFicha.id, {
+          proyecto: fichaFormData.nombreProyecto,
+          codigo: fichaFormData.codigo,
+          tipoProyecto: fichaFormData.categoriaCliente,
+          area: fichaFormData.lineaServicio || editingDemandaForFicha.area,
+          responsableTI: fichaFormData.gestorComercial || editingDemandaForFicha.responsableTI,
+          solicitante: fichaFormData.cliente || editingDemandaForFicha.solicitante,
+          planificacionEstimada: fichaFormData.fechaInicio || editingDemandaForFicha.planificacionEstimada,
+          fechaEstimadaEntrega: fichaFormData.fechaTermino || editingDemandaForFicha.fechaEstimadaEntrega
+        });
+      }
+
+      setIsFichaModalOpen(false);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error al guardar Ficha de Proyecto:', err);
+      showError('Ocurrió un error al guardar los cambios en la Ficha de Proyecto');
+    } finally {
+      setIsSavingFicha(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -566,7 +779,7 @@ const GestionDemanda: React.FC = () => {
 
       const isNowAprobado = fields.estado === 'Aprobado' || fields.decisionComite === 'Aprobado';
       if (isNowAprobado) {
-        showSuccess(`✅ Demanda "${updated.proyecto}" aprobada. Ficha de Proyecto creada automáticamente.`);
+        showSuccess(`✅ Demanda "${updated.proyecto}" aprobada.`);
       }
     } catch (err) {
       console.error('Error en actualización rápida:', err);
@@ -574,10 +787,6 @@ const GestionDemanda: React.FC = () => {
     } finally {
       setUpdatingId(null);
     }
-  };
-
-  const handleConvertToFicha = async (item: DemandaItem) => {
-    navigate('/fichas-proyecto', { state: { convertFromDemanda: item } });
   };
 
   const handleOpenCreateModal = () => {
@@ -641,11 +850,11 @@ const GestionDemanda: React.FC = () => {
       if (editingItem) {
         itemSaved = await demandaService.update(editingItem.id, formData);
         setDemandas(prev => prev.map(item => item.id === editingItem.id ? itemSaved : item));
-        showSuccess(isApproved ? `✅ Demanda actualizada y aprobada. Ficha de Proyecto creada automáticamente.` : 'Demanda actualizada correctamente.');
+        showSuccess(isApproved ? `✅ Demanda actualizada y aprobada.` : 'Demanda actualizada correctamente.');
       } else {
         itemSaved = await demandaService.create(formData);
         setDemandas(prev => [itemSaved, ...prev]);
-        showSuccess(isApproved ? `✅ Demanda "${itemSaved.proyecto}" registrada y aprobada. Ficha de Proyecto creada automáticamente.` : 'Demanda registrada correctamente.');
+        showSuccess(isApproved ? `✅ Demanda "${itemSaved.proyecto}" registrada y aprobada.` : 'Demanda registrada correctamente.');
       }
       setIsModalOpen(false);
     } catch (err) {
@@ -928,7 +1137,7 @@ const GestionDemanda: React.FC = () => {
                   <th className="px-3 py-1.5 min-w-[150px]">TIEMPO ESTIMADO COMPLETO</th>
                   <th className="px-3 py-1.5 min-w-[140px]">TIEMPO ESTIMADO AJUSTES</th>
                   <th className="px-3 py-1.5 min-w-[160px]">OBSERVACION</th>
-                  <th className="px-4 py-1.5 text-right sticky right-0 top-0 z-30 bg-slate-100 shadow-xs">Acciones</th>
+                  <th className="px-4 py-1.5 text-right sticky right-0 top-0 z-30 bg-slate-100 shadow-xs min-w-[210px]">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
@@ -1165,30 +1374,35 @@ const GestionDemanda: React.FC = () => {
 
                       {/* 17. Acciones */}
                       <td className="px-4 py-1 text-right whitespace-nowrap sticky right-0 bg-white shadow-xs">
-                        <div className="flex items-center justify-end space-x-1">
-                          {isAprobado && (
-                            <button
-                              onClick={() => handleConvertToFicha(item)}
-                              className="px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold transition-all shadow-2xs flex items-center gap-0.5"
-                              title="Traspasar datos a Ficha de Proyecto"
-                            >
-                              🚀 Ficha
-                            </button>
-                          )}
+                        <div className="flex items-center justify-end space-x-1.5">
+                          {/* Botón Editar Ficha de Proyecto */}
+                          <button
+                            onClick={() => handleOpenFichaEditModal(item)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-md transition-colors shadow-2xs cursor-pointer"
+                            title="Editar Ficha de Proyecto / Prospecto"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span>Ficha</span>
+                          </button>
 
+                          {/* Botón Editar Demanda */}
                           <button
                             onClick={() => handleOpenEditModal(item)}
-                            className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
-                            title="Editar Requerimiento"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md transition-colors shadow-2xs cursor-pointer"
+                            title="Editar Requerimiento de Demanda"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
+                            <span>Demanda</span>
                           </button>
 
+                          {/* Botón Eliminar */}
                           <button
                             onClick={() => handleDelete(item.id, item.proyecto)}
-                            className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                            className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors cursor-pointer"
                             title="Eliminar"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1732,6 +1946,276 @@ const GestionDemanda: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Modal para Editar Ficha de Proyecto desde Gestión de la Demanda */}
+      {isFichaModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex justify-center items-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl overflow-hidden flex flex-col my-8 max-h-[90vh]">
+            <div className="px-6 py-4 bg-gradient-to-r from-purple-900 to-indigo-800 text-white flex justify-between items-center">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📄</span>
+                  <h3 className="text-lg font-bold">Editar Ficha de Proyecto</h3>
+                  <span className="px-2 py-0.5 text-[10px] uppercase font-extrabold bg-purple-200 text-purple-900 rounded-full">
+                    Módulo Ficha de Proyecto
+                  </span>
+                </div>
+                <p className="text-xs text-purple-100 mt-0.5">
+                  Sincronizado directamente desde Gestión de la Demanda ({editingDemandaForFicha?.proyecto})
+                </p>
+              </div>
+              <button
+                onClick={() => setIsFichaModalOpen(false)}
+                className="text-purple-200 hover:text-white text-2xl font-bold transition-colors cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitFichaForm} className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Sección 1: Información del Proyecto */}
+              <div>
+                <h4 className="text-xs font-bold text-purple-700 uppercase tracking-wider mb-3 flex items-center gap-1.5 border-b border-purple-100 pb-1">
+                  <span>📌</span> Información General del Proyecto / Prospecto
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Código Proyecto</label>
+                    <input
+                      type="text"
+                      value={fichaFormData.codigo}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, codigo: e.target.value }))}
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-purple-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Nombre Proyecto</label>
+                    <input
+                      type="text"
+                      value={fichaFormData.nombreProyecto}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, nombreProyecto: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 font-semibold text-gray-900"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Cliente / Solicitante</label>
+                    <input
+                      type="text"
+                      value={fichaFormData.cliente}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, cliente: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Categoría Cliente</label>
+                    <select
+                      value={fichaFormData.categoriaCliente}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, categoriaCliente: e.target.value as 'Interno' | 'Externo' }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 bg-white"
+                    >
+                      <option value="Externo">Externo</option>
+                      <option value="Interno">Interno</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Gestor Comercial / Líder TI</label>
+                    <select
+                      value={fichaFormData.gestorComercial}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, gestorComercial: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 bg-white"
+                    >
+                      <option value="">- Seleccionar -</option>
+                      {profesionales.map(p => (
+                        <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Centro de Costo</label>
+                    <input
+                      type="text"
+                      value={fichaFormData.centroCosto}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, centroCosto: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div className="md:col-span-3">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Estado Comercial / Avance</label>
+                    <select
+                      value={fichaFormData.estado}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, estado: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 bg-white font-medium"
+                    >
+                      {ESTADOS_PROSPECTO.map(est => (
+                        <option key={est} value={est}>{est}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sección 2: Finanzas y Valores */}
+              <div>
+                <h4 className="text-xs font-bold text-purple-700 uppercase tracking-wider mb-3 flex items-center gap-1.5 border-b border-purple-100 pb-1">
+                  <span>💰</span> Finanzas y Valores Estimados
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Valor del Servicio ($)</label>
+                    <input
+                      type="number"
+                      value={fichaFormData.valorServicio}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, valorServicio: Number(e.target.value) }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Margen (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={fichaFormData.margen}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, margen: Number(e.target.value) }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Rentabilidad ($)</label>
+                    <input
+                      type="number"
+                      value={fichaFormData.rentabilidad}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, rentabilidad: Number(e.target.value) }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Total Ingresos ($)</label>
+                    <input
+                      type="number"
+                      value={fichaFormData.totalIngresos}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, totalIngresos: Number(e.target.value) }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Sección 3: Fechas y Plazos */}
+              <div>
+                <h4 className="text-xs font-bold text-purple-700 uppercase tracking-wider mb-3 flex items-center gap-1.5 border-b border-purple-100 pb-1">
+                  <span>📅</span> Fechas y Plazos de Ejecución
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">F. Est. Adjudicación</label>
+                    <input
+                      type="date"
+                      value={fichaFormData.fechaEstimadaAdjudicacion}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, fechaEstimadaAdjudicacion: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">F. Adjudicación</label>
+                    <input
+                      type="date"
+                      value={fichaFormData.fechaAdjudicacion}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, fechaAdjudicacion: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">F. Inicio Servicio</label>
+                    <input
+                      type="date"
+                      value={fichaFormData.fechaInicio}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, fechaInicio: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">F. Término Servicio</label>
+                    <input
+                      type="date"
+                      value={fichaFormData.fechaTermino}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, fechaTermino: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Plazo Estimado Servicio</label>
+                    <input
+                      type="text"
+                      value={fichaFormData.plazoEstimado}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, plazoEstimado: e.target.value }))}
+                      placeholder="Ej. 6 meses"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Línea de Servicio / Área</label>
+                    <input
+                      type="text"
+                      value={fichaFormData.lineaServicio}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, lineaServicio: e.target.value }))}
+                      placeholder="Ej. Desarrollo RPA"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Garantía</label>
+                    <input
+                      type="text"
+                      value={fichaFormData.garantia}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, garantia: e.target.value }))}
+                      placeholder="Ej. Boleta 10% Venta"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Horas Soporte</label>
+                    <input
+                      type="number"
+                      value={fichaFormData.horasSoporte}
+                      onChange={(e) => setFichaFormData(prev => ({ ...prev, horasSoporte: Number(e.target.value) }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Acciones del Modal */}
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setIsFichaModalOpen(false)}
+                  className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm transition-all cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingFicha}
+                  className="px-5 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-semibold text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingFicha ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Guardando Ficha...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>💾 Guardar Cambios en Ficha</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -199,10 +199,7 @@ export const demandaService = {
       const demandas = await demandaService.getAll();
       const exists = demandas.find(d => d.proyecto.toLowerCase() === (prospecto.nombreProyecto || '').toLowerCase());
       
-      const isInternal = prospecto.categoriaCliente === 'Interno' || 
-                         prospecto.tipoCliente === 'Interno' ||
-                         ['OFIMUNDO', 'DREAMTEC', 'GLOBAL HORIZON', 'HIWAY'].includes((prospecto.cliente || '').trim().toUpperCase());
-      const tipoProyecto: TipoProyectoDemanda = isInternal ? 'Interno' : 'Externo';
+      const tipoProyecto: TipoProyectoDemanda = 'Externo';
 
       const demandaData: Partial<DemandaItem> = {
         proyecto: prospecto.nombreProyecto,

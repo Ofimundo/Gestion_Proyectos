@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import GestionDemandaModel from '../models/GestionDemanda';
 import FichaProspectoModel from '../models/FichaProspecto';
+import FichaModel from '../models/Ficha';
 
 const router = Router();
 
@@ -12,6 +13,13 @@ router.get('/', async (req: Request, res: Response) => {
             await FichaProspectoModel.syncAllToDemanda();
         } catch (syncErr) {
             console.error('Error al autosincronizar prospectos en GET /api/demanda:', syncErr);
+        }
+
+        // Sincronizar todas las fichas de proyecto a gestión de la demanda
+        try {
+            await FichaModel.syncAllToDemanda();
+        } catch (syncErr) {
+            console.error('Error al autosincronizar fichas de proyecto en GET /api/demanda:', syncErr);
         }
 
         const demandas = await GestionDemandaModel.findAll();

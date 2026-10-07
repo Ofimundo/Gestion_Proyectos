@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import api from '../services/api';
-import emailService from '../services/emailService';
-import { showSuccess, showError } from './Toast';
+import { showSuccess } from './Toast';
 
 interface Profesional {
   id: string;
@@ -61,146 +60,7 @@ interface Ficha {
   }>;
 }
 
-// Componente Modal para Traspasar Ficha a Solicitud de Proyecto (Manual o Email)
-const ModalTraspasoSolicitud: React.FC<{
-  isOpen: boolean;
-  onClose: () => void;
-  ficha: Ficha | null;
-  onManual: (ficha: Ficha) => void;
-}> = ({ isOpen, onClose, ficha, onManual }) => {
-  const [email, setEmail] = useState('');
-  const [enviando, setEnviando] = useState(false);
 
-  useEffect(() => {
-    if (ficha) {
-      const posibleEmail = (ficha.contraparte || '').includes('@') ? ficha.contraparte : '';
-      setEmail(posibleEmail);
-    }
-  }, [ficha]);
-
-  if (!isOpen || !ficha) return null;
-
-  const handleEnviarCorreo = async () => {
-    if (!email || !email.includes('@')) {
-      showError('Por favor ingresa un correo electrónico válido');
-      return;
-    }
-
-    try {
-      setEnviando(true);
-      const token = 'TOKEN_' + Date.now() + '_' + Math.random().toString(36).substring(2, 10);
-      
-      const payloadSolicitud = {
-        token,
-        email,
-        nombreProyecto: ficha.nombreProyecto,
-        nombreSolicitante: ficha.contraparte || ficha.cliente,
-        area: ficha.cliente || 'General',
-        nombreContraparteCliente: ficha.contraparte || ficha.cliente,
-        nombreResponsableProyecto: ficha.responsable || ficha.lider,
-        descripcionGeneral: ficha.descripcion || '',
-        presupuesto: ficha.venta || 0,
-        fechaInicio: ficha.fechaInicio || new Date().toISOString().split('T')[0],
-        estado: 'Pendiente',
-        observaciones: `Traspasado desde Ficha de Proyecto (Código: ${ficha.codigo})`
-      };
-
-      await api.post('/solicitudes', payloadSolicitud);
-
-      const link = `${window.location.origin}/formulario-solicitud/${token}`;
-      const resEmail = await emailService.sendFormularioEmail(
-        email,
-        ficha.nombreProyecto,
-        payloadSolicitud.nombreSolicitante,
-        payloadSolicitud.area,
-        link
-      );
-
-      if (resEmail.success) {
-        showSuccess('📧 Formulario de Solicitud enviado por correo exitosamente');
-        onClose();
-      } else {
-        showError(resEmail.message || 'Error al enviar el correo');
-      }
-    } catch (err: any) {
-      console.error('Error enviando solicitud por correo:', err);
-      showError(err.response?.data?.message || 'Error al enviar la solicitud por correo');
-    } finally {
-      setEnviando(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
-        <div className="flex justify-between items-center mb-4 border-b pb-3">
-          <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            🚀 Traspasar a Solicitud de Proyecto
-          </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="mb-6 space-y-4">
-          <div className="bg-indigo-50/80 p-3 rounded-lg border border-indigo-100">
-            <p className="text-xs text-indigo-700 font-semibold uppercase tracking-wider">Ficha de Proyecto</p>
-            <p className="text-base font-bold text-gray-900">{ficha.codigo} - {ficha.nombreProyecto}</p>
-            <p className="text-xs text-gray-600">Cliente: {ficha.cliente} {ficha.contraparte ? `| Contraparte: ${ficha.contraparte}` : ''}</p>
-          </div>
-
-          <p className="text-sm text-gray-700 font-medium">
-            ¿Cómo deseas gestionar la Solicitud de Proyecto?
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button
-              onClick={() => {
-                onClose();
-                onManual(ficha);
-              }}
-              className="p-4 border-2 border-indigo-200 hover:border-indigo-600 bg-white hover:bg-indigo-50/50 rounded-xl transition-all flex flex-col items-center text-center group"
-            >
-              <span className="text-3xl mb-2 group-hover:scale-110 transition-transform">✍️</span>
-              <span className="font-bold text-sm text-indigo-900">Rellenar Manualmente</span>
-              <span className="text-xs text-gray-500 mt-1">Completar campos en la plataforma</span>
-            </button>
-
-            <div className="p-4 border-2 border-purple-200 bg-white rounded-xl flex flex-col justify-between">
-              <div className="flex flex-col items-center text-center mb-2">
-                <span className="text-3xl mb-1">📧</span>
-                <span className="font-bold text-sm text-purple-900">Enviar por Correo</span>
-                <span className="text-xs text-gray-500 mt-1">Enviar link al cliente/contraparte</span>
-              </div>
-              <input
-                type="email"
-                placeholder="Ingresa el email..."
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded mb-2 focus:ring-2 focus:ring-purple-500"
-              />
-              <button
-                onClick={handleEnviarCorreo}
-                disabled={enviando}
-                className="w-full py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-bold transition-all disabled:opacity-50"
-              >
-                {enviando ? 'Enviando...' : 'Enviar Email'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end border-t pt-3">
-          <button onClick={onClose} className="px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-xs font-semibold">
-            Cancelar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const ETAPAS_SEQUENTIAL = [
   { id: 'Ingreso', shortLabel: '1. Ingreso', fullLabel: '1. Ingreso', label: '1. Ingreso', icon: '🟡' },
@@ -378,9 +238,7 @@ const Fichas: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   
-  // Modal Traspaso a Solicitud
-  const [showModalTraspasoSolicitud, setShowModalTraspasoSolicitud] = useState(false);
-  const [fichaParaTraspaso, setFichaParaTraspaso] = useState<Ficha | null>(null);
+
 
   // ✅ Nuevo estado para forzar recreación del modal
   const [modalKey, setModalKey] = useState(0);
@@ -1109,14 +967,6 @@ const Fichas: React.FC = () => {
     }
   };
 
-  const handleAbrirTraspasoSolicitud = (ficha: Ficha) => {
-    setFichaParaTraspaso(ficha);
-    setShowModalTraspasoSolicitud(true);
-  };
-
-  const handleConfirmarManualTraspaso = (ficha: Ficha) => {
-    navigate('/solicitud-proyecto', { state: { convertFromFicha: ficha } });
-  };
 
   // ✅ CORREGIDO: Función handleSubmit completa
   const handleSubmit = async () => {
@@ -1146,10 +996,6 @@ const Fichas: React.FC = () => {
           
           if (location.state?.convertFromSolicitud) {
             console.log('✅ Ficha creada desde solicitud aprobada');
-          } else {
-            // Abrir modal de traspaso a Solicitud de Proyecto
-            setFichaParaTraspaso(newFicha);
-            setShowModalTraspasoSolicitud(true);
           }
         }
       } else {
@@ -1184,6 +1030,7 @@ const Fichas: React.FC = () => {
         }
         
         console.log('✅ Ficha guardada exitosamente');
+        showSuccess(`✅ Ficha guardada exitosamente. ${formData.lider ? `Se envió una notificación por correo a ${formData.lider}.` : ''}`);
         
       } else {
         setError(response?.data?.message || 'Error al guardar ficha');
@@ -1459,13 +1306,6 @@ const Fichas: React.FC = () => {
                             <div className="flex items-center gap-1.5">
                               <button onClick={() => handleEdit(ficha)} className="text-purple-600 hover:text-purple-800 p-1" title="Editar">✏️</button>
                               <button onClick={() => handleDelete(ficha.id)} className="text-red-600 hover:text-red-800 p-1" title="Eliminar">🗑️</button>
-                              <button
-                                onClick={() => handleAbrirTraspasoSolicitud(ficha)}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-0.5 rounded text-xs font-bold transition-all shadow-xs flex items-center gap-1"
-                                title="Traspasar datos a Solicitud de Proyecto"
-                              >
-                                📋 Pasar a Solicitud
-                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1704,7 +1544,7 @@ const Fichas: React.FC = () => {
                       <div className="space-y-3 sm:space-y-4">
                         {/* Venta - EDITABLE */}
                         <div>
-                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">💰 Venta ($) *</label>
+                          <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1">💰 Venta (UF) *</label>
                           <input 
                             type="number" 
                             name="venta" 
@@ -2058,15 +1898,6 @@ const Fichas: React.FC = () => {
             </div>
           )}
 
-          {/* Modal para Traspasar Ficha a Solicitud */}
-          {showModalTraspasoSolicitud && (
-            <ModalTraspasoSolicitud
-              isOpen={showModalTraspasoSolicitud}
-              onClose={() => setShowModalTraspasoSolicitud(false)}
-              ficha={fichaParaTraspaso}
-              onManual={handleConfirmarManualTraspaso}
-            />
-          )}
     </div>
   );
 };

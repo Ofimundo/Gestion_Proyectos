@@ -335,17 +335,13 @@ const FichasProspecto: React.FC<FichasProspectoProps> = () => {
 
   // Open Modal for Edit
   const handleOpenEdit = (p: FichaProspecto) => {
-    const isInternalComp = ['OFIMUNDO', 'DREAMTEC', 'GLOBAL HORIZON', 'HIWAY'].includes((p.cliente || '').trim().toUpperCase());
-    const catCliente = p.categoriaCliente || (isInternalComp ? 'Interno' : 'Externo');
-    const empInterna = p.empresaInterna || (isInternalComp ? p.cliente : '');
-
     setFormData({
       codigo: p.codigo || '',
       nombreProyecto: p.nombreProyecto || '',
       estado: p.estado || '10% Prospecto (Lead)',
       cliente: p.cliente || '',
-      categoriaCliente: catCliente,
-      empresaInterna: empInterna,
+      categoriaCliente: 'Externo',
+      empresaInterna: '',
       gestorComercial: p.gestorComercial || '',
       centroCosto: p.centroCosto || '',
       fechaEstimadaAdjudicacion: p.fechaEstimadaAdjudicacion || '',
@@ -786,7 +782,7 @@ const FichasProspecto: React.FC<FichasProspectoProps> = () => {
                       <th className="px-4 py-3">Cliente</th>
                       <th className="px-4 py-3">Gestor Comercial</th>
                       <th className="px-4 py-3">Estado</th>
-                      <th className="px-4 py-3">Valor Serv.</th>
+                      <th className="px-4 py-3">Valor Serv. (UF)</th>
                       <th className="px-4 py-3 text-right">Acciones</th>
                     </tr>
                   </thead>
@@ -815,7 +811,7 @@ const FichasProspecto: React.FC<FichasProspectoProps> = () => {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 font-medium">${(p.valorServicio || 0).toLocaleString()}</td>
+                        <td className="px-4 py-3 font-medium">UF {(p.valorServicio || 0).toLocaleString()}</td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex flex-wrap items-center justify-end gap-2.5">
                             <button 
@@ -952,157 +948,85 @@ const FichasProspecto: React.FC<FichasProspectoProps> = () => {
               <div>
                 <h4 className="text-sm font-bold text-indigo-600 uppercase tracking-wider mb-3">Información del Proyecto</h4>
                 
-                {/* 1. SELECCIÓN DE CATEGORÍA Y DETALLES DE CLIENTE */}
-                <div className="mb-5 bg-gradient-to-r from-indigo-50/70 via-purple-50/40 to-white p-4 rounded-2xl border border-indigo-100/80 shadow-sm space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-100/60 pb-3">
-                    <div>
-                      <span className="text-xs font-bold text-indigo-900 uppercase tracking-wider">Categoría de Cliente</span>
-                      <p className="text-[11px] text-gray-500">Selecciona si la propuesta es para un cliente interno o externo</p>
+                {/* 1. SELECCIÓN Y DETALLES DE CLIENTE */}
+                <div className="mb-5 bg-gradient-to-r from-indigo-50/70 via-purple-50/40 to-white p-4 rounded-2xl border border-indigo-100/80 shadow-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Tipo de Cliente (Nuevo vs Vigente) */}
+                    <div className="bg-white p-3 rounded-xl border border-gray-200">
+                      <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">Tipo de Cliente</label>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="radio"
+                            name="tipoCliente"
+                            value="Nuevo"
+                            checked={formData.tipoCliente === 'Nuevo'}
+                            onChange={(e) => handleInputChange(e as any)}
+                            className="text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                          />
+                          <span className="text-xs font-semibold text-gray-700">🆕 Cliente Nuevo</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="radio"
+                            name="tipoCliente"
+                            value="Vigente"
+                            checked={formData.tipoCliente === 'Vigente'}
+                            onChange={(e) => handleInputChange(e as any)}
+                            className="text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                          />
+                          <span className="text-xs font-semibold text-gray-700">🔄 Cliente Vigente</span>
+                        </label>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4 bg-white px-3 py-1.5 rounded-xl border border-indigo-200 shadow-sm">
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input
-                          type="radio"
-                          name="categoriaCliente"
-                          value="Externo"
-                          checked={(formData.categoriaCliente || 'Externo') === 'Externo'}
-                          onChange={() => {
-                            setFormData(prev => ({
-                              ...prev,
-                              categoriaCliente: 'Externo',
-                              empresaInterna: '',
-                              cliente: ['OFIMUNDO', 'DREAMTEC', 'GLOBAL HORIZON', 'HIWAY'].includes((prev.cliente || '').trim().toUpperCase()) ? '' : prev.cliente
-                            }));
-                          }}
-                          className="text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                        />
-                        <span className="text-xs font-bold text-gray-800">🌐 Cliente Externo</span>
-                      </label>
 
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input
-                          type="radio"
-                          name="categoriaCliente"
-                          value="Interno"
-                          checked={formData.categoriaCliente === 'Interno'}
-                          onChange={() => {
-                            setFormData(prev => ({
-                              ...prev,
-                              categoriaCliente: 'Interno',
-                              empresaInterna: prev.empresaInterna || 'OFIMUNDO',
-                              cliente: prev.empresaInterna || 'OFIMUNDO'
-                            }));
-                          }}
-                          className="text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                        />
-                        <span className="text-xs font-bold text-gray-800">🏢 Cliente Interno</span>
-                      </label>
+                    {/* Input Nombre/RUT del Cliente Externo */}
+                    <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Cliente Externo *</label>
+                      <input
+                        type="text"
+                        name="cliente"
+                        value={formData.cliente}
+                        onChange={handleInputChange}
+                        onFocus={() => {
+                          const filtered = clientesOriginales.filter(c => 
+                            (c.NomAux || '').toLowerCase().includes((formData.cliente || '').toLowerCase()) ||
+                            (c.RutAux || '').toLowerCase().includes((formData.cliente || '').toLowerCase())
+                          );
+                          setClientesSugeridos(filtered.slice(0, 50));
+                          setShowClientesDropdown(true);
+                        }}
+                        placeholder="Escriba o busque cliente..."
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white"
+                        required
+                        autoComplete="off"
+                      />
+                      {showClientesDropdown && (clientesSugeridos.length > 0 || loadingClientes) && (
+                        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                          {loadingClientes ? (
+                            <div className="px-4 py-2.5 text-xs text-gray-500 flex items-center gap-2">
+                              <span className="animate-spin border-2 border-indigo-500 border-t-transparent rounded-full h-3 w-3 inline-block"></span>
+                              Buscando clientes...
+                            </div>
+                          ) : (
+                            clientesSugeridos.map((c) => (
+                              <div
+                                key={c.CodAux}
+                                onClick={() => handleSelectCliente(c)}
+                                className="px-4 py-2.5 text-xs sm:text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer transition-colors border-b last:border-0 border-gray-100"
+                              >
+                                <div className="font-bold text-gray-900 leading-tight">{c.NomAux}</div>
+                                <div className="text-[10px] text-gray-500 flex justify-between mt-1">
+                                  <span>RUT: {c.RutAux}</span>
+                                  {c.VenDes && <span className="text-indigo-600 font-medium">Gestor: {c.VenDes}</span>}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-
-                  {/* Sub-opciones según la categoría seleccionada */}
-                  {formData.categoriaCliente === 'Interno' ? (
-                    <div className="bg-white p-3.5 rounded-xl border border-indigo-200/80 shadow-sm max-w-md">
-                      <label className="block text-xs font-bold text-indigo-900 mb-1.5">Empresa Interna *</label>
-                      <select
-                        name="empresaInterna"
-                        value={formData.empresaInterna || formData.cliente || 'OFIMUNDO'}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            empresaInterna: val,
-                            cliente: val
-                          }));
-                        }}
-                        className="w-full border border-indigo-300 bg-indigo-50/40 rounded-xl px-3 py-2 text-sm font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                        required
-                      >
-                        <option value="OFIMUNDO">OFIMUNDO</option>
-                        <option value="DREAMTEC">DREAMTEC</option>
-                        <option value="GLOBAL HORIZON">GLOBAL HORIZON</option>
-                        <option value="HIWAY">HIWAY</option>
-                      </select>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Tipo de Cliente (Nuevo vs Vigente) */}
-                      <div className="bg-white p-3 rounded-xl border border-gray-200">
-                        <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1.5">Tipo de Cliente</label>
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input
-                              type="radio"
-                              name="tipoCliente"
-                              value="Nuevo"
-                              checked={formData.tipoCliente === 'Nuevo'}
-                              onChange={(e) => handleInputChange(e as any)}
-                              className="text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                            />
-                            <span className="text-xs font-semibold text-gray-700">🆕 Cliente Nuevo</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input
-                              type="radio"
-                              name="tipoCliente"
-                              value="Vigente"
-                              checked={formData.tipoCliente === 'Vigente'}
-                              onChange={(e) => handleInputChange(e as any)}
-                              className="text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                            />
-                            <span className="text-xs font-semibold text-gray-700">🔄 Cliente Vigente</span>
-                          </label>
-                        </div>
-                      </div>
-
-                      {/* Input Nombre/RUT del Cliente Externo */}
-                      <div className="relative" onClick={(e) => e.stopPropagation()}>
-                        <label className="block text-xs font-bold text-gray-700 mb-1">Cliente Externo *</label>
-                        <input
-                          type="text"
-                          name="cliente"
-                          value={formData.cliente}
-                          onChange={handleInputChange}
-                          onFocus={() => {
-                            const filtered = clientesOriginales.filter(c => 
-                              (c.NomAux || '').toLowerCase().includes((formData.cliente || '').toLowerCase()) ||
-                              (c.RutAux || '').toLowerCase().includes((formData.cliente || '').toLowerCase())
-                            );
-                            setClientesSugeridos(filtered.slice(0, 50));
-                            setShowClientesDropdown(true);
-                          }}
-                          placeholder="Escriba o busque cliente..."
-                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white"
-                          required
-                          autoComplete="off"
-                        />
-                        {showClientesDropdown && (clientesSugeridos.length > 0 || loadingClientes) && (
-                          <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                            {loadingClientes ? (
-                              <div className="px-4 py-2.5 text-xs text-gray-500 flex items-center gap-2">
-                                <span className="animate-spin border-2 border-indigo-500 border-t-transparent rounded-full h-3 w-3 inline-block"></span>
-                                Buscando clientes...
-                              </div>
-                            ) : (
-                              clientesSugeridos.map((c) => (
-                                <div
-                                  key={c.CodAux}
-                                  onClick={() => handleSelectCliente(c)}
-                                  className="px-4 py-2.5 text-xs sm:text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer transition-colors border-b last:border-0 border-gray-100"
-                                >
-                                  <div className="font-bold text-gray-900 leading-tight">{c.NomAux}</div>
-                                  <div className="text-[10px] text-gray-500 flex justify-between mt-1">
-                                    <span>RUT: {c.RutAux}</span>
-                                    {c.VenDes && <span className="text-indigo-600 font-medium">Gestor: {c.VenDes}</span>}
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* 2. DATOS DEL PROYECTO */}
@@ -1213,7 +1137,7 @@ const FichasProspecto: React.FC<FichasProspectoProps> = () => {
                 <h4 className="text-sm font-bold text-indigo-600 uppercase tracking-wider mb-3">Finanzas y Valores</h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Valor del Servicio ($)</label>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Valor del Servicio (UF)</label>
                     <input
                       type="number"
                       name="valorServicio"
@@ -1234,7 +1158,7 @@ const FichasProspecto: React.FC<FichasProspectoProps> = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Rentabilidad ($)</label>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Rentabilidad (UF)</label>
                     <input
                       type="number"
                       name="rentabilidad"
@@ -1244,7 +1168,7 @@ const FichasProspecto: React.FC<FichasProspectoProps> = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Total de Ingresos ($)</label>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Total de Ingresos (UF)</label>
                     <input
                       type="number"
                       name="totalIngresos"

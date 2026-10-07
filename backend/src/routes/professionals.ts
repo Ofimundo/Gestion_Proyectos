@@ -7,6 +7,26 @@ import type { Request, Response, NextFunction } from 'express';
 const router = express.Router();
 
 // ============================================
+// OBTENER PROFESIONALES PÚBLICOS (Sin autenticación)
+// ============================================
+router.get('/public/list', async (req: Request, res: Response) => {
+    try {
+        const professionals = await ProfessionalModel.findAll();
+        res.json({
+            success: true,
+            data: professionals,
+            count: professionals.length
+        });
+    } catch (error) {
+        console.error('❌ Error al obtener profesionales públicos:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener profesionales'
+        });
+    }
+});
+
+// ============================================
 // OBTENER TODOS LOS PROFESIONALES
 // ============================================
 router.get('/', authMiddleware, async (req: Request, res: Response) => {

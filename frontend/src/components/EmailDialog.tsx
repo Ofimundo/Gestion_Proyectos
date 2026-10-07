@@ -58,7 +58,7 @@ const EmailDialog: React.FC<EmailDialogProps> = ({
           solicitudNombre,
           solicitudData?.nombreSolicitante || 'Solicitante',
           solicitudData?.area || 'Área no especificada',
-          solicitudData?.link || `${window.location.origin}/solicitud-proyecto/${solicitudId}`
+          solicitudData?.link || `${window.location.origin}/formulario-solicitud/${solicitudId}`
         );
 
         if (result.success) {

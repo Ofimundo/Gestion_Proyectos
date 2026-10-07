@@ -22,6 +22,7 @@ import DashboardProyectos from "./components/DashboardProyectos";
 import Perfil from "./components/Perfil";
 import SolicitudProyecto from "./components/SolicitudProyecto";
 import PublicSolicitudForm from "./components/PublicSolicitudForm";
+import PublicFichaForm from "./components/PublicFichaForm";
 import Admin from "./components/Admin";
 import GestionDemanda from "./components/GestionDemanda";
 
@@ -157,6 +158,10 @@ function AppRoutes() {
       <Route
         path="/formulario-solicitud/:token"
         element={<PublicSolicitudForm />}
+      />
+      <Route
+        path="/formulario-ficha/:id"
+        element={<PublicFichaForm />}
       />
 
       {/* Rutas protegidas (requieren autenticación) */}

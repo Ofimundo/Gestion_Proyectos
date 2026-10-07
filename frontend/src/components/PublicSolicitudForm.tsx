@@ -548,7 +548,7 @@ const PublicSolicitudForm: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Presupuesto (USD)</label>
+                    <label className="block text-sm font-medium text-gray-700">Presupuesto (UF)</label>
                     <input type="number" name="presupuesto" value={formData.presupuesto || ''} onChange={handleChange}
                       className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md" />
                   </div>
@@ -558,7 +558,7 @@ const PublicSolicitudForm: React.FC = () => {
                       placeholder="Ej: 3 meses" className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Valor Dólar</label>
+                    <label className="block text-sm font-medium text-gray-700">Valor UF</label>
                     <input type="number" step="0.01" name="valorDolar" value={formData.valorDolar || ''} onChange={handleChange}
                       className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md" />
                   </div>

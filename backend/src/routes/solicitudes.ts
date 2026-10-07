@@ -28,6 +28,35 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
 });
 
 // ============================================
+// OBTENER SOLICITUD PÚBLICA POR TOKEN O ID (Sin autenticación)
+// ============================================
+router.get('/public/:id', async (req: Request, res: Response) => {
+    try {
+        console.log(`🔍 Buscando solicitud pública: ${req.params.id}`);
+        let solicitud = await SolicitudModel.findByToken(req.params.id);
+        if (!solicitud) {
+            solicitud = await SolicitudModel.findById(req.params.id);
+        }
+        if (!solicitud) {
+            return res.status(404).json({
+                success: false,
+                message: 'Enlace inválido o solicitud no encontrada'
+            });
+        }
+        res.json({
+            success: true,
+            data: solicitud
+        });
+    } catch (error) {
+        console.error('❌ Error al obtener solicitud pública:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener solicitud pública'
+        });
+    }
+});
+
+// ============================================
 // OBTENER SOLICITUD POR TOKEN (Público)
 // ============================================
 router.get('/token/:token', async (req: Request, res: Response) => {

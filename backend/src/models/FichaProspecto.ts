@@ -187,8 +187,7 @@ export class FichaProspectoModel {
             .input('Proyecto', sql.NVarChar, prospecto.nombreProyecto)
             .query('SELECT Id FROM GestionDemanda WHERE Proyecto = @Proyecto');
         
-        const isInternalComp = ['OFIMUNDO', 'DREAMTEC', 'GLOBAL HORIZON', 'HIWAY'].includes((prospecto.cliente || '').trim().toUpperCase());
-        const tipoProyecto: 'Interno' | 'Externo' = (prospecto.tipoCliente === 'Interno' || isInternalComp) ? 'Interno' : 'Externo';
+        const tipoProyecto: 'Interno' | 'Externo' = 'Externo';
 
         if (check.recordset.length === 0) {
             await GestionDemandaModel.create({
@@ -235,10 +234,7 @@ export class FichaProspectoModel {
                 SELECT 
                     fp.Codigo AS Codigo,
                     fp.NombreProyecto,
-                    CASE 
-                        WHEN UPPER(LTRIM(RTRIM(ISNULL(fp.Cliente, '')))) IN ('OFIMUNDO', 'DREAMTEC', 'GLOBAL HORIZON', 'HIWAY') OR fp.TipoCliente = 'Interno' THEN 'Interno'
-                        ELSE 'Externo'
-                    END AS TipoProyecto,
+                    'Externo' AS TipoProyecto,
                     'alta' AS Prioridad,
                     'Solicitud' AS Estado,
                     'Pendiente' AS DecisionComite,
@@ -261,6 +257,15 @@ export class FichaProspectoModel {
                       SELECT 1 FROM GestionDemanda gd 
                       WHERE LOWER(LTRIM(RTRIM(gd.Proyecto))) = LOWER(LTRIM(RTRIM(fp.NombreProyecto)))
                   );
+            `);
+
+            // Asegurar que todas las demandas vinculadas a prospectos tengan TipoProyecto = 'Externo'
+            await db.request().query(`
+                UPDATE gd
+                SET gd.TipoProyecto = 'Externo'
+                FROM GestionDemanda gd
+                INNER JOIN FichasProspecto fp ON LOWER(LTRIM(RTRIM(gd.Proyecto))) = LOWER(LTRIM(RTRIM(fp.NombreProyecto)))
+                WHERE gd.TipoProyecto <> 'Externo';
             `);
 
             // 2. Sync missing Codigo in existing GestionDemanda rows from FichasProspecto

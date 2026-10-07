@@ -148,7 +148,7 @@ const DashboardProyectos: React.FC = () => {
     labels: filteredProyectos.map(p => p.codigo),
     datasets: [
       {
-        label: 'Venta ($)',
+        label: 'Venta (UF)',
         data: filteredProyectos.map(p => p.venta || 0),
         backgroundColor: 'rgba(34, 197, 94, 0.5)',
         borderColor: 'rgb(34, 197, 94)',
@@ -387,7 +387,7 @@ const DashboardProyectos: React.FC = () => {
                   <div>
                     <p className="text-xs text-gray-600">Venta</p>
                     <p className="text-sm sm:text-base md:text-lg lg:text-2xl font-bold text-gray-900">
-                      ${totalVenta.toLocaleString()}
+                      UF {totalVenta.toLocaleString()}
                     </p>
                   </div>
                   <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -540,7 +540,7 @@ const DashboardProyectos: React.FC = () => {
                             {proyecto.cliente}
                           </td>
                           <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap text-green-600 font-medium">
-                            ${proyecto.venta?.toLocaleString() || 0}
+                            UF {proyecto.venta?.toLocaleString() || 0}
                           </td>
                           <td className="px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 whitespace-nowrap hidden lg:table-cell">
                             {proyecto.hhPlanificadas || 0}

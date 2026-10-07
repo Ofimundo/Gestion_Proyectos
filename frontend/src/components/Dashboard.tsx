@@ -291,7 +291,7 @@ const Dashboard: React.FC = () => {
                 <div>
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Venta Total Presupuestada</p>
                   <h3 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mt-2">
-                    ${stats.totalVentas.toLocaleString()}
+                    UF {stats.totalVentas.toLocaleString()}
                   </h3>
                 </div>
                 <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center text-xl shadow-inner">
